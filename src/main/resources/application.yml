@@ -1,19 +1,19 @@
 server:
-  port: ${SERVER_PORT:8080}
+  port: ${SERVER_PORT}
 
 spring:
   application:
     name: cook-history-service
   datasource:
-    url: ${DB_URL:jdbc:mysql://localhost:3306/dish_memo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:545426}
+    url: jdbc:mysql://${DB_ADDRESS}/dish_memo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      database: ${REDIS_DATABASE:0}
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      database: ${REDIS_DATABASE}
   jackson:
     property-naming-strategy: SNAKE_CASE
     time-zone: Asia/Hong_Kong
@@ -29,5 +29,5 @@ mybatis:
 
 app:
   upload:
-    base-dir: "uploads"
-    public-prefix: "http://localhost:8080/uploads"
+    base-dir: ${UPLOAD_BASE_DIR}
+    public-prefix: ${UPLOAD_PUBLIC_PREFIX}

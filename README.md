@@ -14,21 +14,7 @@ Spring Boot 后端工程，服务名为 `cook-history-service`，接口版本为
 
 ## 配置
 
-配置文件为 `src/main/resources/application.yml`。数据库、Redis、端口和上传目录均支持环境变量覆盖：
-
-```bash
-export DB_URL='jdbc:mysql://localhost:3306/dish_memo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai'
-export DB_USERNAME=root
-export DB_PASSWORD=545426
-export REDIS_HOST=localhost
-export REDIS_PORT=6379
-export REDIS_DATABASE=0
-export SERVER_PORT=8080
-export UPLOAD_BASE_DIR=uploads
-export UPLOAD_PUBLIC_PREFIX=/uploads
-```
-
-上传图片会保存到 `${UPLOAD_BASE_DIR}/dish/`，上传接口返回的公开地址为 `/uploads/dish/{filename}`。服务端只将 `/uploads/dish/**` 映射到该物理目录，不暴露上传根目录下的其他路径；静态图片请求会拒绝 `../`、`..\\` 和 URL 编码后的路径穿越形式，并且只允许 `jpg`、`jpeg`、`png`、`webp` 扩展名，其他扩展名返回 HTTP `404`。
+配置文件为 `src/main/resources/application.yml`。数据库、Redis、端口和上传目录均支持环境变量覆盖，在启动时指定
 
 ## 日志配置
 
@@ -102,7 +88,7 @@ java -Dlogback.configurationFile=/path/to/logback.xml -jar target/cook-history-s
 ## 数据库初始化
 
 ```bash
-mysql -uroot -p545426 < src/main/resources/db/schema.sql
+mysql -uroot -p < src/main/resources/db/schema.sql
 ```
 
 ## 测试与构建
@@ -115,8 +101,20 @@ mvn package
 ## 启动
 
 ```bash
+export DB_ADDRESS='localhost:3306'
+export DB_USERNAME=root
+export DB_PASSWORD={{db_password}}
+export REDIS_HOST=localhost
+export REDIS_PORT=6379
+export REDIS_DATABASE=0
+export SERVER_PORT=8080
+export UPLOAD_BASE_DIR=uploads
+export UPLOAD_PUBLIC_PREFIX="http://localhost:8080/uploads"
 mvn spring-boot:run
 ```
+
+上传图片会保存到 `${UPLOAD_BASE_DIR}/dish/`，上传接口返回的公开地址为 `${UPLOAD_PUBLIC_PREFIX}/dish/{filename}`。服务端只将 `/uploads/dish/**` 映射到该物理目录，不暴露上传根目录下的其他路径；静态图片请求会拒绝 `../`、`..\\` 和 URL 编码后的路径穿越形式，并且只允许 `jpg`、`jpeg`、`png`、`webp` 扩展名，其他扩展名返回 HTTP `404`。
+
 
 启动后 API Base URL：
 
