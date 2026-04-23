@@ -1,122 +1,137 @@
-# wxcloudrun-springboot
-[![GitHub license](https://img.shields.io/github/license/WeixinCloud/wxcloudrun-express)](https://github.com/WeixinCloud/wxcloudrun-express)
-![GitHub package.json dependency version (prod)](https://img.shields.io/badge/maven-3.6.0-green)
-![GitHub package.json dependency version (prod)](https://img.shields.io/badge/jdk-11-green)
+# Backend
 
-微信云托管 Java Springboot 框架模版，实现简单的计数器读写接口，使用云托管 MySQL 读写、记录计数值。
+Spring Boot 后端工程，服务名为 `cook-history-service`，接口版本为 `v1.0.0`。
 
-![](https://qcloudimg.tencent-cloud.cn/raw/be22992d297d1b9a1a5365e606276781.png)
+## 模块
 
+| 模块 | 职责 |
+|---|---|
+| `common` | 统一响应、错误码、业务异常、全局异常处理、`X-User-Id` 校验。 |
+| `dish` | 菜品 CRUD、分页查询、用户隔离和 MyBatis 数据访问。 |
+| `file` | 图片上传，本地存储 MVP 实现。 |
+| `suggestion` | 菜名建议，包含模型失败降级语义。 |
+| `recommendation` | “今天吃什么”随机推荐。 |
 
-## 快速开始
-前往 [微信云托管快速开始页面](https://developers.weixin.qq.com/miniprogram/dev/wxcloudrun/src/basic/guide.html)，选择相应语言的模板，根据引导完成部署。
+## 配置
 
-## 本地调试
-下载代码在本地调试，请参考[微信云托管本地调试指南](https://developers.weixin.qq.com/miniprogram/dev/wxcloudrun/src/guide/debug/)。
+配置文件为 `src/main/resources/application.yml`。数据库、Redis、端口和上传目录均支持环境变量覆盖：
 
-## 实时开发
-代码变动时，不需要重新构建和启动容器，即可查看变动后的效果。请参考[微信云托管实时开发指南](https://developers.weixin.qq.com/miniprogram/dev/wxcloudrun/src/guide/debug/dev.html)
-
-## Dockerfile最佳实践
-请参考[如何提高项目构建效率](https://developers.weixin.qq.com/miniprogram/dev/wxcloudrun/src/scene/build/speed.html)
-
-## 目录结构说明
-~~~
-.
-├── Dockerfile                      Dockerfile 文件
-├── LICENSE                         LICENSE 文件
-├── README.md                       README 文件
-├── container.config.json           模板部署「服务设置」初始化配置（二开请忽略）
-├── mvnw                            mvnw 文件，处理mevan版本兼容问题
-├── mvnw.cmd                        mvnw.cmd 文件，处理mevan版本兼容问题
-├── pom.xml                         pom.xml文件
-├── settings.xml                    maven 配置文件
-├── springboot-cloudbaserun.iml     项目配置文件
-└── src                             源码目录
-    └── main                        源码主目录
-        ├── java                    业务逻辑目录
-        └── resources               资源文件目录
-~~~
-
-
-## 服务 API 文档
-
-### `GET /api/count`
-
-获取当前计数
-
-#### 请求参数
-
-无
-
-#### 响应结果
-
-- `code`：错误码
-- `data`：当前计数值
-
-##### 响应结果示例
-
-```json
-{
-  "code": 0,
-  "data": 42
-}
+```bash
+export DB_URL='jdbc:mysql://localhost:3306/dish_memo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai'
+export DB_USERNAME=root
+export DB_PASSWORD=545426
+export REDIS_HOST=localhost
+export REDIS_PORT=6379
+export REDIS_DATABASE=0
+export SERVER_PORT=8080
+export UPLOAD_BASE_DIR=uploads
+export UPLOAD_PUBLIC_PREFIX=/uploads
 ```
 
-#### 调用示例
+上传图片会保存到 `${UPLOAD_BASE_DIR}/dish/`，上传接口返回的公开地址为 `/uploads/dish/{filename}`。服务端只将 `/uploads/dish/**` 映射到该物理目录，不暴露上传根目录下的其他路径；静态图片请求会拒绝 `../`、`..\\` 和 URL 编码后的路径穿越形式，并且只允许 `jpg`、`jpeg`、`png`、`webp` 扩展名，其他扩展名返回 HTTP `404`。
 
-```
-curl https://<云托管服务域名>/api/count
-```
+## 日志配置
 
+日志配置文件为 `src/main/resources/logback.xml`。该文件是独立标准 Logback XML，兼容 Spring Boot 2.x、Spring Boot 3.x 和普通 JVM 环境；不使用 Spring Boot 专属标签，不新增依赖，不配置自定义 Appender 或 AsyncAppender。
 
+内置 Appender：
 
-### `POST /api/count`
+- `CONSOLE`：实时输出到控制台。
+- `ROLLING_FILE`：写入本地文件，并通过 `SizeAndTimeBasedRollingPolicy` 按日期和大小滚动归档。
 
-更新计数，自增或者清零
+默认输出路径为 `./logs/cook-history-service.log`，归档路径为 `./logs/archive/`。目录不存在时 Logback 会尝试自动创建；如果目录无写权限，文件 Appender 会输出启动 `ERROR` 状态，控制台日志仍可继续使用。
 
-#### 请求参数
+可覆盖参数：
 
-- `action`：`string` 类型，枚举值
-  - 等于 `"inc"` 时，表示计数加一
-  - 等于 `"clear"` 时，表示计数重置（清零）
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `APP_NAME` | `cook-history-service` | 应用名，也作为默认日志文件名前缀 |
+| `LOG_PATH` | `./logs` | 日志输出目录 |
+| `LOG_FILE_NAME` | `${APP_NAME}` | 日志文件名，不含扩展名 |
+| `LOG_CHARSET` | `UTF-8` | 日志编码 |
+| `LOG_PATTERN` | 标准文本 pattern | 控制台日志格式 |
+| `LOG_FILE_PATTERN` | 标准文本 pattern | 文件日志格式 |
+| `LOG_LEVEL_ROOT` | `INFO` | root logger 级别 |
+| `LOG_LEVEL_APP` | `INFO` | `com.example.dish_memo` logger 级别 |
+| `LOG_LEVEL_SPRING` | `INFO` | Spring 框架 logger 级别 |
+| `LOG_LEVEL_MYBATIS` | `INFO` | MyBatis logger 级别 |
+| `LOG_LEVEL_HIBERNATE` | `WARN` | Hibernate logger 级别 |
+| `LOG_MAX_FILE_SIZE` | `100MB` | 单个归档文件最大体积 |
+| `LOG_MAX_HISTORY` | `30` | 归档保留天数 |
+| `LOG_TOTAL_SIZE_CAP` | `10GB` | 归档总容量上限 |
 
-##### 请求参数示例
+环境变量示例：
 
-```
-{
-  "action": "inc"
-}
-```
-
-#### 响应结果
-
-- `code`：错误码
-- `data`：当前计数值
-
-##### 响应结果示例
-
-```json
-{
-  "code": 0,
-  "data": 42
-}
-```
-
-#### 调用示例
-
-```
-curl -X POST -H 'content-type: application/json' -d '{"action": "inc"}' https://<云托管服务域名>/api/count
+```bash
+export LOG_PATH=/var/log/cook-history-service
+export LOG_FILE_NAME=cook-history-service
+export LOG_LEVEL_ROOT=INFO
+export LOG_LEVEL_APP=DEBUG
+export LOG_MAX_FILE_SIZE=50MB
+export LOG_MAX_HISTORY=14
+export LOG_TOTAL_SIZE_CAP=2GB
 ```
 
-## 使用注意
-如果不是通过微信云托管控制台部署模板代码，而是自行复制/下载模板代码后，手动新建一个服务并部署，需要在「服务设置」中补全以下环境变量，才可正常使用，否则会引发无法连接数据库，进而导致部署失败。
-- MYSQL_ADDRESS
-- MYSQL_PASSWORD
-- MYSQL_USERNAME
-以上三个变量的值请按实际情况填写。如果使用云托管内MySQL，可以在控制台MySQL页面获取相关信息。
+JVM 参数示例：
 
+```bash
+java \
+  -DLOG_PATH=/var/log/cook-history-service \
+  -DLOG_LEVEL_ROOT=INFO \
+  -DLOG_MAX_FILE_SIZE=50MB \
+  -DLOG_MAX_HISTORY=14 \
+  -DLOG_TOTAL_SIZE_CAP=2GB \
+  -jar target/cook-history-service-1.0.0.jar
+```
 
-## License
+一键替换或外置加载：
 
-[MIT](./LICENSE)
+```bash
+# 备份已有配置
+cp src/main/resources/logback.xml src/main/resources/logback.xml.bak.$(date +%Y%m%d%H%M%S)
+
+# 使用项目内配置启动
+mvn spring-boot:run
+
+# 使用外置配置启动
+java -Dlogback.configurationFile=/path/to/logback.xml -jar target/cook-history-service-1.0.0.jar
+```
+
+启动后检查控制台输出，并确认 `${LOG_PATH}` 目录下生成当前日志文件和 `archive/` 归档目录。
+
+## 数据库初始化
+
+```bash
+mysql -uroot -p545426 < src/main/resources/db/schema.sql
+```
+
+## 测试与构建
+
+```bash
+mvn test
+mvn package
+```
+
+## 启动
+
+```bash
+mvn spring-boot:run
+```
+
+启动后 API Base URL：
+
+```text
+http://localhost:8080/api/v1
+```
+
+所有业务接口都需要 `X-User-Id` Header。
+
+## 结构化日志
+
+用户 API 与核心 Service 使用 `slf4j` 输出 JSON 结构化日志：
+
+- `DishService`、`RecommendationService`、`SuggestionService`、`FileStorageService` 的业务入口输出 `INFO`。
+- `GlobalExceptionHandler` 的所有异常分支输出 `WARN`；Service 内已有显式 `catch` 分支也输出 `WARN`。
+- 所有日志强制包含 `userId` 和 `description`；异常日志额外包含 `exceptionType` 和 `exceptionMessage`。
+- `userId` 来自 `X-User-Id`，异常处理阶段缺失时使用 `UNKNOWN`。
+- 日志工具会脱敏常见 `password`、`token`、`authorization`、`access_token`、`refresh_token` 明文值，业务代码不记录完整 Token、密码或完整请求体。

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <property name="APP_NAME" value="${APP_NAME:-cook-history-service}"/>
+    <property name="LOG_PATH" value="${LOG_PATH:-./logs}"/>
+    <property name="LOG_FILE_NAME" value="${LOG_FILE_NAME:-${APP_NAME}}"/>
+    <property name="LOG_CHARSET" value="${LOG_CHARSET:-UTF-8}"/>
+    <property name="LOG_PATTERN" value="${LOG_PATTERN:-%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n}"/>
+    <property name="LOG_FILE_PATTERN" value="${LOG_FILE_PATTERN:-%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n}"/>
+
+    <property name="LOG_LEVEL_ROOT" value="${LOG_LEVEL_ROOT:-INFO}"/>
+    <property name="LOG_LEVEL_APP" value="${LOG_LEVEL_APP:-INFO}"/>
+    <property name="LOG_LEVEL_SPRING" value="${LOG_LEVEL_SPRING:-INFO}"/>
+    <property name="LOG_LEVEL_MYBATIS" value="${LOG_LEVEL_MYBATIS:-INFO}"/>
+    <property name="LOG_LEVEL_HIBERNATE" value="${LOG_LEVEL_HIBERNATE:-WARN}"/>
+
+    <property name="LOG_MAX_FILE_SIZE" value="${LOG_MAX_FILE_SIZE:-100MB}"/>
+    <property name="LOG_MAX_HISTORY" value="${LOG_MAX_HISTORY:-30}"/>
+    <property name="LOG_TOTAL_SIZE_CAP" value="${LOG_TOTAL_SIZE_CAP:-10GB}"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>${LOG_CHARSET}</charset>
+        </encoder>
+    </appender>
+
+    <appender name="ROLLING_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/${LOG_FILE_NAME}.log</file>
+        <append>true</append>
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>${LOG_FILE_PATTERN}</pattern>
+            <charset>${LOG_CHARSET}</charset>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/archive/${LOG_FILE_NAME}.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>${LOG_MAX_FILE_SIZE}</maxFileSize>
+            <maxHistory>${LOG_MAX_HISTORY}</maxHistory>
+            <totalSizeCap>${LOG_TOTAL_SIZE_CAP}</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <logger name="com.example.dish_memo" level="${LOG_LEVEL_APP}"/>
+    <logger name="org.springframework" level="${LOG_LEVEL_SPRING}"/>
+    <logger name="org.mybatis" level="${LOG_LEVEL_MYBATIS}"/>
+    <logger name="org.hibernate" level="${LOG_LEVEL_HIBERNATE}"/>
+
+    <root level="${LOG_LEVEL_ROOT}">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ROLLING_FILE"/>
+    </root>
+</configuration>
