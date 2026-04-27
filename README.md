@@ -85,6 +85,8 @@ java -Dlogback.configurationFile=/path/to/logback.xml -jar target/cook-history-s
 
 启动后检查控制台输出，并确认 `${LOG_PATH}` 目录下生成当前日志文件和 `archive/` 归档目录。
 
+# 开发环境
+
 ## 数据库初始化
 
 ```bash
@@ -123,6 +125,11 @@ http://localhost:8080/api/v1
 ```
 
 所有业务接口都需要 `X-User-Id` Header。
+
+# 生产环境
+
+## 环境变量
+- 通过 `Dockerfile + 微信云托管部署参数` 配置好环境变量
 
 ## 结构化日志
 
