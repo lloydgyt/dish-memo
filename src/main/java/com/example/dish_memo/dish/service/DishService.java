@@ -22,6 +22,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * Business service for dish CRUD and user ownership validation.
@@ -29,6 +30,9 @@ import java.util.UUID;
 @Service
 public class DishService {
     private static final Logger LOGGER = LoggerFactory.getLogger(DishService.class);
+    private static final Pattern FILE_ID_PATTERN = Pattern.compile(
+            "^(cloud://.+|(?:development|production)/dish/[^/\\s]+/[^\\s]+)$"
+    );
 
     private final DishMapper dishMapper;
 
@@ -159,12 +163,27 @@ public class DishService {
     }
 
     private void fillRecord(DishRecord record, DishRequest request, MealType mealType, LocalDateTime updatedAt) {
+        String fileId = normalizeFileId(request.fileId());
         record.setName(request.name().trim());
-        record.setImageUrl(request.imageUrl().trim());
+        record.setFileId(fileId);
         record.setNote(StringUtils.hasText(request.note()) ? request.note().trim() : null);
         record.setDate(request.date());
         record.setMealType(mealType.name());
         record.setUpdatedAt(updatedAt);
+    }
+
+    /**
+     * Normalizes and validates object storage file IDs accepted by the API contract.
+     *
+     * @param fileId raw file ID from the request body
+     * @return trimmed file ID
+     */
+    private String normalizeFileId(String fileId) {
+        String trimmed = fileId == null ? "" : fileId.trim();
+        if (!FILE_ID_PATTERN.matcher(trimmed).matches() || trimmed.contains("..")) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "file_id is invalid");
+        }
+        return trimmed;
     }
 
     private DishRecord requireOwnedRecord(String userId, String dishId) {

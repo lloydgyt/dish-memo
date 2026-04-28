@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS dish_record (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
     user_id VARCHAR(64) NOT NULL,
     name VARCHAR(128) NOT NULL,
-    image_url VARCHAR(512) NOT NULL,
+    file_id VARCHAR(512) NOT NULL,
     note TEXT NULL,
     date DATE NOT NULL,
     meal_type VARCHAR(16) NOT NULL,

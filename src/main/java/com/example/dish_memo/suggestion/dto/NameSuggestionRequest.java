@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 /**
  * Request body for dish name suggestion.
  *
- * @param imageUrl uploaded image URL
+ * @param fileId object storage file ID
  */
-public record NameSuggestionRequest(@NotBlank(message = "image_url is required") String imageUrl) {
+public record NameSuggestionRequest(@NotBlank(message = "file_id is required") String fileId) {
 }

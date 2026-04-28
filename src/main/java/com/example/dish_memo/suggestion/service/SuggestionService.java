@@ -9,8 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.net.URI;
-import java.net.URISyntaxException;
+import java.util.regex.Pattern;
 
 /**
  * Provides replaceable dish name suggestion behavior with MVP fallback semantics.
@@ -18,6 +17,9 @@ import java.net.URISyntaxException;
 @Service
 public class SuggestionService {
     private static final Logger LOGGER = LoggerFactory.getLogger(SuggestionService.class);
+    private static final Pattern FILE_ID_PATTERN = Pattern.compile(
+            "^(cloud://.+|(?:development|production)/dish/[^/\\s]+/[^\\s]+)$"
+    );
 
     /**
      * Generates a dish name suggestion or returns a documented fallback without failing the flow.
@@ -28,26 +30,25 @@ public class SuggestionService {
      */
     public NameSuggestionResponse suggest(String userId, NameSuggestionRequest request) {
         LOGGER.info(StructuredLogUtils.info(userId, "suggest dish name"));
-        validateImageUrl(userId, request.imageUrl());
-        if (request.imageUrl().contains("force_model_failed")) {
+        String fileId = normalizeFileId(request.fileId());
+        if (fileId.contains("force_model_failed")) {
             return new NameSuggestionResponse(null, "failed", "model inference timeout");
         }
         // TODO should add LLM function
         return new NameSuggestionResponse("家常菜", "success", null);
     }
 
-    private void validateImageUrl(String userId, String imageUrl) {
-        try {
-            URI uri = new URI(imageUrl);
-            boolean absoluteHttp = uri.isAbsolute()
-                    && ("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()));
-            boolean localUpload = imageUrl.startsWith("/uploads/");
-            if (!absoluteHttp && !localUpload) {
-                throw new BusinessException(ErrorCode.PARAM_ERROR, "image_url is invalid");
-            }
-        } catch (URISyntaxException ex) {
-            LOGGER.warn(StructuredLogUtils.exception(userId, "validate suggestion image url", ex));
-            throw new BusinessException(ErrorCode.PARAM_ERROR, "image_url is invalid");
+    /**
+     * Normalizes and validates object storage file IDs before model inference.
+     *
+     * @param fileId raw file ID from the request body
+     * @return trimmed file ID
+     */
+    private String normalizeFileId(String fileId) {
+        String trimmed = fileId == null ? "" : fileId.trim();
+        if (!FILE_ID_PATTERN.matcher(trimmed).matches() || trimmed.contains("..")) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "file_id is invalid");
         }
+        return trimmed;
     }
 }

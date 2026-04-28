@@ -15,10 +15,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SuggestionServiceTest {
 
     @Test
-    void suggestReturnsSuccessForValidImageUrl(CapturedOutput output) {
+    void suggestReturnsSuccessForValidFileId(CapturedOutput output) {
         SuggestionService service = new SuggestionService();
 
-        NameSuggestionResponse response = service.suggest("u_1", new NameSuggestionRequest("https://cdn.example.com/dish.jpg"));
+        NameSuggestionResponse response = service.suggest("u_1", new NameSuggestionRequest("production/dish/u_1/dish.jpg"));
 
         assertThat(response.modelStatus()).isEqualTo("success");
         assertThat(response.suggestedName()).isNotBlank();
@@ -30,7 +30,7 @@ class SuggestionServiceTest {
     void suggestReturnsFallbackWhenModelFails() {
         SuggestionService service = new SuggestionService();
 
-        NameSuggestionResponse response = service.suggest("u_1", new NameSuggestionRequest("/uploads/force_model_failed.jpg"));
+        NameSuggestionResponse response = service.suggest("u_1", new NameSuggestionRequest("production/dish/u_1/force_model_failed.jpg"));
 
         assertThat(response.modelStatus()).isEqualTo("failed");
         assertThat(response.suggestedName()).isNull();
@@ -38,26 +38,12 @@ class SuggestionServiceTest {
     }
 
     @Test
-    void suggestRejectsInvalidUrl() {
+    void suggestRejectsInvalidFileId() {
         SuggestionService service = new SuggestionService();
 
-        assertThatThrownBy(() -> service.suggest("u_1", new NameSuggestionRequest("not-a-url")))
+        assertThatThrownBy(() -> service.suggest("u_1", new NameSuggestionRequest("not-a-file-id")))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.PARAM_ERROR);
-    }
-
-    @Test
-    void suggestLogsWarnWhenUrlSyntaxCannotBeParsed(CapturedOutput output) {
-        SuggestionService service = new SuggestionService();
-
-        assertThatThrownBy(() -> service.suggest("u_1", new NameSuggestionRequest("http://bad host/dish.jpg")))
-                .isInstanceOf(BusinessException.class);
-
-        assertThat(output).contains("WARN");
-        assertThat(output).contains("\"userId\":\"u_1\"");
-        assertThat(output).contains("\"description\":\"validate suggestion image url\"");
-        assertThat(output).contains("\"exceptionType\":\"java.net.URISyntaxException\"");
-        assertThat(output).contains("\"exceptionMessage\":");
     }
 }

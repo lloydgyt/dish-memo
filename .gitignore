@@ -1,4 +1,7 @@
 target/
 
+# logs
+*.gz
+
 # codex
 .codex*

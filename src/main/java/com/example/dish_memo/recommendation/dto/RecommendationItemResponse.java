@@ -9,14 +9,14 @@ import java.time.LocalDate;
  *
  * @param id dish ID
  * @param name dish name
- * @param imageUrl image URL
+ * @param fileId object storage file ID
  * @param date historical dish date
  * @param mealType meal category
  */
 public record RecommendationItemResponse(
         String id,
         String name,
-        String imageUrl,
+        String fileId,
         LocalDate date,
         String mealType
 ) {
@@ -30,7 +30,7 @@ public record RecommendationItemResponse(
         return new RecommendationItemResponse(
                 record.getId(),
                 record.getName(),
-                record.getImageUrl(),
+                record.getFileId(),
                 record.getDate(),
                 record.getMealType()
         );

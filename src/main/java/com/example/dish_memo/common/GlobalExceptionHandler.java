@@ -13,8 +13,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
-import org.springframework.web.multipart.MaxUploadSizeExceededException;
-import org.springframework.web.multipart.support.MissingServletRequestPartException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * Converts framework and domain exceptions to the documented response envelope.
@@ -65,7 +64,6 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({
             ConstraintViolationException.class,
             MissingServletRequestParameterException.class,
-            MissingServletRequestPartException.class,
             MethodArgumentTypeMismatchException.class,
             HttpMessageNotReadableException.class
     })
@@ -95,19 +93,20 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Handles multipart upload size failures.
+     * Handles requests that do not match any documented endpoint or static resource.
      *
-     * @param ex upload size exception
+     * @param ex missing resource exception
      * @param request current servlet request
-     * @return parameter error response
+     * @return not found response
      */
-    @ExceptionHandler(MaxUploadSizeExceededException.class)
-    public ResponseEntity<ApiResponse<Void>> handleUploadSizeExceeded(
-            MaxUploadSizeExceededException ex,
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResourceFoundException(
+            NoResourceFoundException ex,
             HttpServletRequest request
     ) {
-        warn(request, "handle upload size exceeded exception", ex);
-        return parameterError("file size exceeds limit");
+        warn(request, "handle missing resource exception", ex);
+        return ResponseEntity.status(ErrorCode.DISH_NOT_FOUND.status())
+                .body(ApiResponse.error(ErrorCode.DISH_NOT_FOUND, "resource not found"));
     }
 
     /**

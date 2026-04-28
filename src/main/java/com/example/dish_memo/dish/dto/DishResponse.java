@@ -9,7 +9,7 @@ import java.time.ZoneId;
  *
  * @param id dish ID
  * @param name dish name
- * @param imageUrl image URL
+ * @param fileId object storage file ID
  * @param note optional note
  * @param date dish date
  * @param mealType meal category
@@ -19,7 +19,7 @@ import java.time.ZoneId;
 public record DishResponse(
         String id,
         String name,
-        String imageUrl,
+        String fileId,
         String note,
         LocalDate date,
         String mealType,
@@ -38,7 +38,7 @@ public record DishResponse(
         return new DishResponse(
                 record.getId(),
                 record.getName(),
-                record.getImageUrl(),
+                record.getFileId(),
                 record.getNote(),
                 record.getDate(),
                 record.getMealType(),

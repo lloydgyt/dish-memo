@@ -23,8 +23,8 @@ public interface DishMapper {
      * @param record record to insert
      */
     @Insert("""
-            INSERT INTO dish_record (id, user_id, name, image_url, note, date, meal_type, created_at, updated_at)
-            VALUES (#{id}, #{userId}, #{name}, #{imageUrl}, #{note}, #{date}, #{mealType}, #{createdAt}, #{updatedAt})
+            INSERT INTO dish_record (id, user_id, name, file_id, note, date, meal_type, created_at, updated_at)
+            VALUES (#{id}, #{userId}, #{name}, #{fileId}, #{note}, #{date}, #{mealType}, #{createdAt}, #{updatedAt})
             """)
     void insert(DishRecord record);
 
@@ -45,7 +45,7 @@ public interface DishMapper {
      */
     @Update("""
             UPDATE dish_record
-            SET name = #{name}, image_url = #{imageUrl}, note = #{note}, date = #{date},
+            SET name = #{name}, file_id = #{fileId}, note = #{note}, date = #{date},
                 meal_type = #{mealType}, updated_at = #{updatedAt}
             WHERE id = #{id} AND user_id = #{userId}
             """)

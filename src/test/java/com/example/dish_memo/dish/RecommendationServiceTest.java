@@ -62,7 +62,7 @@ class RecommendationServiceTest {
         record.setId(id);
         record.setUserId("u_1");
         record.setName("菜" + id);
-        record.setImageUrl("https://cdn.example.com/" + id + ".jpg");
+        record.setFileId("production/dish/u_1/" + id + ".jpg");
         record.setDate(LocalDate.parse("2026-04-18"));
         record.setMealType("dinner");
         record.setCreatedAt(LocalDateTime.parse("2026-04-18T10:00:00"));

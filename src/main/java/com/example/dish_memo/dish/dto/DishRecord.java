@@ -10,7 +10,7 @@ public class DishRecord {
     private String id;
     private String userId;
     private String name;
-    private String imageUrl;
+    private String fileId;
     private String note;
     private LocalDate date;
     private String mealType;
@@ -41,12 +41,12 @@ public class DishRecord {
         this.name = name;
     }
 
-    public String getImageUrl() {
-        return imageUrl;
+    public String getFileId() {
+        return fileId;
     }
 
-    public void setImageUrl(String imageUrl) {
-        this.imageUrl = imageUrl;
+    public void setFileId(String fileId) {
+        this.fileId = fileId;
     }
 
     public String getNote() {

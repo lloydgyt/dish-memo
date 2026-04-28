@@ -9,7 +9,7 @@ import java.time.ZoneId;
  *
  * @param id dish ID
  * @param name dish name
- * @param imageUrl image URL
+ * @param fileId object storage file ID
  * @param date dish date
  * @param mealType meal category
  * @param updatedAt RFC3339 latest update timestamp
@@ -17,7 +17,7 @@ import java.time.ZoneId;
 public record DishListItemResponse(
         String id,
         String name,
-        String imageUrl,
+        String fileId,
         LocalDate date,
         String mealType,
         OffsetDateTime updatedAt
@@ -34,7 +34,7 @@ public record DishListItemResponse(
         return new DishListItemResponse(
                 record.getId(),
                 record.getName(),
-                record.getImageUrl(),
+                record.getFileId(),
                 record.getDate(),
                 record.getMealType(),
                 record.getUpdatedAt().atZone(API_ZONE).toOffsetDateTime()

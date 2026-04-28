@@ -13,7 +13,7 @@ public enum ErrorCode {
     CONFLICT(4091001, HttpStatus.CONFLICT),
     LLM_FAILED(4221001, HttpStatus.UNPROCESSABLE_ENTITY),
     INTERNAL_ERROR(5001001, HttpStatus.INTERNAL_SERVER_ERROR),
-    FILE_UPLOAD_FAILED(5001002, HttpStatus.INTERNAL_SERVER_ERROR);
+    OBJECT_STORAGE_ACCESS_FAILED(5001002, HttpStatus.INTERNAL_SERVER_ERROR);
 
     private final int code;
     private final HttpStatus status;

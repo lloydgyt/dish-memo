@@ -31,7 +31,7 @@ class DishServiceTest {
 
         CreateDishResponse response = service.create("u_1", new DishRequest(
                 "番茄炒蛋",
-                "https://cdn.example.com/dish.jpg",
+                "production/dish/u_1/dish.jpg",
                 "少糖",
                 LocalDate.parse("2026-04-18"),
                 "dinner"
@@ -105,7 +105,7 @@ class DishServiceTest {
         record.setId(id);
         record.setUserId(userId);
         record.setName("菜");
-        record.setImageUrl("https://cdn.example.com/dish.jpg");
+        record.setFileId("production/dish/u_1/dish.jpg");
         record.setDate(LocalDate.parse("2026-04-18"));
         record.setMealType(mealType);
         record.setCreatedAt(LocalDateTime.parse("2026-04-18T10:00:00"));

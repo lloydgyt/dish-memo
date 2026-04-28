@@ -1,97 +1,91 @@
-# Backend
+# cook-history-service
 
-Spring Boot 后端工程，服务名为 `cook-history-service`，接口版本为 `v1.0.0`。
+Spring Boot 后端服务，提供个人菜品记录 CRUD、菜名建议和“今天吃什么”随机推荐能力。接口版本为 `v1.1.0`，详细契约见 [docs/api_doc.md](/home/lloydgyt/dish-memo/docs/api_doc.md)。
 
 ## 模块
 
 | 模块 | 职责 |
 |---|---|
 | `common` | 统一响应、错误码、业务异常、全局异常处理、`X-User-Id` 校验。 |
-| `dish` | 菜品 CRUD、分页查询、用户隔离和 MyBatis 数据访问。 |
-| `file` | 图片上传，本地存储 MVP 实现。 |
-| `suggestion` | 菜名建议，包含模型失败降级语义。 |
-| `recommendation` | “今天吃什么”随机推荐。 |
+| `dish` | 菜品新增、列表、详情、编辑、删除、用户隔离和 MyBatis 数据访问。 |
+| `suggestion` | 基于对象存储 `file_id` 的菜名建议，包含模型失败降级语义。 |
+| `recommendation` | 按餐别随机返回不重复历史菜品候选。 |
 
-## 配置
+后端不再提供图片上传接口，也不保存或返回 `image_url`。图片由前端直传对象存储，后端仅保存并返回对象存储 `file_id`。
 
-配置文件为 `src/main/resources/application.yml`。数据库、Redis、端口和上传目录均支持环境变量覆盖，在启动时指定
+## 接口
 
-## 日志配置
+Base URL:
 
-日志配置文件为 `src/main/resources/logback.xml`。该文件是独立标准 Logback XML，兼容 Spring Boot 2.x、Spring Boot 3.x 和普通 JVM 环境；不使用 Spring Boot 专属标签，不新增依赖，不配置自定义 Appender 或 AsyncAppender。
+```text
+http://localhost:8080/api/v1
+```
 
-内置 Appender：
+所有业务接口都需要 Header：
 
-- `CONSOLE`：实时输出到控制台。
-- `ROLLING_FILE`：写入本地文件，并通过 `SizeAndTimeBasedRollingPolicy` 按日期和大小滚动归档。
+```text
+X-User-Id: <current-user-id>
+```
 
-默认输出路径为 `./logs/cook-history-service.log`，归档路径为 `./logs/archive/`。目录不存在时 Logback 会尝试自动创建；如果目录无写权限，文件 Appender 会输出启动 `ERROR` 状态，控制台日志仍可继续使用。
+当前实现的接口：
 
-可覆盖参数：
-
-| 参数 | 默认值 | 说明 |
+| 方法 | 路径 | 说明 |
 |---|---|---|
-| `APP_NAME` | `cook-history-service` | 应用名，也作为默认日志文件名前缀 |
-| `LOG_PATH` | `./logs` | 日志输出目录 |
-| `LOG_FILE_NAME` | `${APP_NAME}` | 日志文件名，不含扩展名 |
-| `LOG_CHARSET` | `UTF-8` | 日志编码 |
-| `LOG_PATTERN` | 标准文本 pattern | 控制台日志格式 |
-| `LOG_FILE_PATTERN` | 标准文本 pattern | 文件日志格式 |
-| `LOG_LEVEL_ROOT` | `INFO` | root logger 级别 |
-| `LOG_LEVEL_APP` | `INFO` | `com.example.dish_memo` logger 级别 |
-| `LOG_LEVEL_SPRING` | `INFO` | Spring 框架 logger 级别 |
-| `LOG_LEVEL_MYBATIS` | `INFO` | MyBatis logger 级别 |
-| `LOG_LEVEL_HIBERNATE` | `WARN` | Hibernate logger 级别 |
-| `LOG_MAX_FILE_SIZE` | `100MB` | 单个归档文件最大体积 |
-| `LOG_MAX_HISTORY` | `30` | 归档保留天数 |
-| `LOG_TOTAL_SIZE_CAP` | `10GB` | 归档总容量上限 |
+| `POST` | `/dishes/name-suggestions` | 基于 `file_id` 生成菜名建议。 |
+| `POST` | `/dishes` | 新增菜品记录。 |
+| `GET` | `/dishes` | 分页查询菜品记录。 |
+| `GET` | `/dishes/{dish_id}` | 查询菜品详情。 |
+| `PUT` | `/dishes/{dish_id}` | 编辑菜品记录。 |
+| `DELETE` | `/dishes/{dish_id}` | 删除菜品记录。 |
+| `GET` | `/recommendations/today-meals` | 获取“今天吃什么”推荐。 |
 
-环境变量示例：
+## 数据库
 
-```bash
-export LOG_PATH=/var/log/cook-history-service
-export LOG_FILE_NAME=cook-history-service
-export LOG_LEVEL_ROOT=INFO
-export LOG_LEVEL_APP=DEBUG
-export LOG_MAX_FILE_SIZE=50MB
-export LOG_MAX_HISTORY=14
-export LOG_TOTAL_SIZE_CAP=2GB
-```
+建库建表脚本位于 [src/main/resources/db/schema.sql](/home/lloydgyt/dish-memo/src/main/resources/db/schema.sql)，单表建表语句也同步放在 [docs/dish_record_schema.sql](/home/lloydgyt/dish-memo/docs/dish_record_schema.sql)。
 
-JVM 参数示例：
-
-```bash
-java \
-  -DLOG_PATH=/var/log/cook-history-service \
-  -DLOG_LEVEL_ROOT=INFO \
-  -DLOG_MAX_FILE_SIZE=50MB \
-  -DLOG_MAX_HISTORY=14 \
-  -DLOG_TOTAL_SIZE_CAP=2GB \
-  -jar target/cook-history-service-1.0.0.jar
-```
-
-一键替换或外置加载：
-
-```bash
-# 备份已有配置
-cp src/main/resources/logback.xml src/main/resources/logback.xml.bak.$(date +%Y%m%d%H%M%S)
-
-# 使用项目内配置启动
-mvn spring-boot:run
-
-# 使用外置配置启动
-java -Dlogback.configurationFile=/path/to/logback.xml -jar target/cook-history-service-1.0.0.jar
-```
-
-启动后检查控制台输出，并确认 `${LOG_PATH}` 目录下生成当前日志文件和 `archive/` 归档目录。
-
-# 开发环境
-
-## 数据库初始化
+初始化：
 
 ```bash
 mysql -uroot -p < src/main/resources/db/schema.sql
 ```
+
+核心表 `dish_record` 字段与 API 文档一致，图片字段为 `file_id`：
+
+```sql
+CREATE TABLE IF NOT EXISTS dish_record (
+    id VARCHAR(64) NOT NULL PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL,
+    name VARCHAR(50) NOT NULL,
+    file_id VARCHAR(512) NOT NULL,
+    note TEXT NULL,
+    date DATE NOT NULL,
+    meal_type VARCHAR(16) NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    CONSTRAINT chk_dish_record_meal_type CHECK (meal_type IN ('breakfast', 'lunch', 'dinner')),
+    INDEX idx_dish_record_user_meal (user_id, meal_type),
+    INDEX idx_dish_record_user_date (user_id, date),
+    INDEX idx_dish_record_user_updated (user_id, updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+## 配置
+
+配置文件为 [src/main/resources/application.yml](/home/lloydgyt/dish-memo/src/main/resources/application.yml)。
+
+必需环境变量：
+
+```bash
+export DB_ADDRESS='localhost:3306'
+export DB_USERNAME=root
+export DB_PASSWORD='your_password'
+export REDIS_HOST=localhost
+export REDIS_PORT=6379
+export REDIS_DATABASE=0
+export SERVER_PORT=8080
+```
+
+Jackson 已配置为 `SNAKE_CASE`，API JSON 字段使用 `file_id`、`meal_type`、`created_at`、`updated_at`、`page_no`、`page_size`、`requested_size`、`actual_size`、`is_empty`、`empty_tip` 等文档格式。
 
 ## 测试与构建
 
@@ -103,40 +97,14 @@ mvn package
 ## 启动
 
 ```bash
-export DB_ADDRESS='localhost:3306'
-export DB_USERNAME=root
-export DB_PASSWORD={{db_password}}
-export REDIS_HOST=localhost
-export REDIS_PORT=6379
-export REDIS_DATABASE=0
-export SERVER_PORT=8080
-export UPLOAD_BASE_DIR=uploads
-export UPLOAD_PUBLIC_PREFIX="http://localhost:8080/uploads"
 mvn spring-boot:run
 ```
 
-上传图片会保存到 `${UPLOAD_BASE_DIR}/dish/`，上传接口返回的公开地址为 `${UPLOAD_PUBLIC_PREFIX}/dish/{filename}`。服务端只将 `/uploads/dish/**` 映射到该物理目录，不暴露上传根目录下的其他路径；静态图片请求会拒绝 `../`、`..\\` 和 URL 编码后的路径穿越形式，并且只允许 `jpg`、`jpeg`、`png`、`webp` 扩展名，其他扩展名返回 HTTP `404`。
+## 日志
 
+日志配置文件为 [src/main/resources/logback.xml](/home/lloydgyt/dish-memo/src/main/resources/logback.xml)。用户 API 与核心 Service 使用 `slf4j` 输出 JSON 结构化日志：
 
-启动后 API Base URL：
-
-```text
-http://localhost:8080/api/v1
-```
-
-所有业务接口都需要 `X-User-Id` Header。
-
-# 生产环境
-
-## 环境变量
-- 通过 `Dockerfile + 微信云托管部署参数` 配置好环境变量
-
-## 结构化日志
-
-用户 API 与核心 Service 使用 `slf4j` 输出 JSON 结构化日志：
-
-- `DishService`、`RecommendationService`、`SuggestionService`、`FileStorageService` 的业务入口输出 `INFO`。
-- `GlobalExceptionHandler` 的所有异常分支输出 `WARN`；Service 内已有显式 `catch` 分支也输出 `WARN`。
-- 所有日志强制包含 `userId` 和 `description`；异常日志额外包含 `exceptionType` 和 `exceptionMessage`。
-- `userId` 来自 `X-User-Id`，异常处理阶段缺失时使用 `UNKNOWN`。
-- 日志工具会脱敏常见 `password`、`token`、`authorization`、`access_token`、`refresh_token` 明文值，业务代码不记录完整 Token、密码或完整请求体。
+- `DishService`、`RecommendationService`、`SuggestionService` 的业务入口输出 `INFO`。
+- `GlobalExceptionHandler` 的异常分支输出 `WARN`。
+- 日志包含 `userId` 和 `description`；异常日志额外包含 `exceptionType` 和 `exceptionMessage`。
+- 日志工具会脱敏常见 `password`、`token`、`authorization`、`access_token`、`refresh_token` 明文值。
