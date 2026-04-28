@@ -40,13 +40,18 @@ COPY --from=build /app/target/*.jar .
 # 此处端口必须与「服务设置」-「流水线」以及「手动上传代码包」部署时填写的端口一致，否则会部署失败。
 EXPOSE 8080
 
-# 环境变量
+# 环境变量 （注释掉的配置指的是放在云托管的部署参数中，以保密）
+ENV SERVER_PORT=8080
+# ENV DB_ADDRESS='localhost:3306'
+# ENV DB_USERNAME=root
+# ENV DB_PASSWORD='your_password'
 ENV REDIS_HOST=localhost
 ENV REDIS_PORT=6379
 ENV REDIS_DATABASE=0
-ENV SERVER_PORT=8080
-ENV UPLOAD_BASE_DIR=uploads
-ENV UPLOAD_PUBLIC_PREFIX="http://localhost:8080/uploads"
+# ENV BAILIAN_API_KEY='your-bailian-api-key'
+ENV BAILIAN_BASE_URL='https://dashscope.aliyuncs.com/compatible-mode/v1'
+ENV BAILIAN_MODEL='qwen3.6-flash'
+ENV SUGGESTION_IMAGE_URL_ALLOWED_HOSTS='oss.example.com,img.example.com,7072-prod-d5gdc5h99b1442a27-1424479475.tcb.qcloud.la'
 
 # 执行启动命令.
 # 写多行独立的CMD命令是错误写法！只有最后一行CMD命令会被执行，之前的都会被忽略，导致业务报错。

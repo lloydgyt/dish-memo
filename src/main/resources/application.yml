@@ -22,3 +22,13 @@ spring:
 mybatis:
   configuration:
     map-underscore-to-camel-case: true
+
+dish-memo:
+  suggestion:
+    image-url-allowed-hosts: ${SUGGESTION_IMAGE_URL_ALLOWED_HOSTS:localhost,127.0.0.1}
+    bailian:
+      api-key: ${BAILIAN_API_KEY:}
+      base-url: ${BAILIAN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+      model: ${BAILIAN_MODEL:qwen3.6-flash}
+      connect-timeout: ${BAILIAN_CONNECT_TIMEOUT:3s}
+      read-timeout: ${BAILIAN_READ_TIMEOUT:15s}

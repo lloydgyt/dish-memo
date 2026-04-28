@@ -1,11 +1,16 @@
 package com.example.dish_memo.suggestion.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 /**
  * Request body for dish name suggestion.
  *
- * @param fileId object storage file ID
+ * @param imageUrl temporary object storage image URL
+ * @param prompt optional user prompt for dish naming preference
  */
-public record NameSuggestionRequest(@NotBlank(message = "file_id is required") String fileId) {
+public record NameSuggestionRequest(
+        @NotBlank(message = "image_url is required") String imageUrl,
+        @Size(max = 500, message = "prompt is too long") String prompt
+) {
 }

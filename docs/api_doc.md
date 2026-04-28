@@ -7,7 +7,7 @@
 ## 1. 服务信息
 
 ### 1.1 服务说明
-提供个人菜品记录的新增、查看、编辑、删除，以及基于历史记录的“今天吃什么”随机推荐能力。
+提供个人菜品记录的新增、查看、编辑、删除，基于历史记录的“今天吃什么”随机推荐能力，以及基于图片和提示词的菜品名称推荐能力。
 
 ### 1.2 Base URL
 
@@ -100,7 +100,7 @@ development/dish/u_1001/img_01HRXYZ.jpg
 
 ### 2.6 外部配置
 
-配置 MySQL、Redis：
+配置 MySQL、Redis、阿里云百炼：
 
 ```yaml
 spring:
@@ -116,6 +116,14 @@ spring:
 
 server:
   port: 8080
+
+dish-memo:
+  suggestion:
+    image-url-allowed-hosts: oss.example.com,img.example.com
+    bailian:
+      api-key: ${BAILIAN_API_KEY}
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      model: qwen3.6-flash
 ```
 
 ---
@@ -166,7 +174,7 @@ server:
 
 - **方法**：`POST`
 - **路径**：`/dishes/name-suggestions`
-- **说明**：根据前端已上传到对象存储的图片调用 LLM 生成 1 个菜名建议；失败时前端应允许用户手动填写。
+- **说明**：根据前端已上传到对象存储的图片临时 URL 和提示词调用阿里云百炼 `qwen3.6-flash` 多模态模型，生成 1 个菜名建议；失败时前端应允许用户手动填写。
 
 ### 请求参数
 
@@ -174,13 +182,15 @@ server:
 
 | 参数名 | 类型 | 必填 | 说明 | 约束/示例 |
 |---|---|---:|---|---|
-| file_id | string | 是 | 对象存储文件 ID | 来自前端直传对象存储后的 `fileID` |
+| image_url | string | 是 | 对象存储文件的临时 URL | 仅允许 `https`，域名必须命中服务端白名单 |
+| prompt | string | 否 | 生成提示词 | 最大 500 字符；为空时使用服务端默认提示词 |
 
 ### 请求示例
 
 ```json
 {
-  "file_id": "production/dish/u_1001/img_01HRXYZ.jpg"
+  "image_url": "https://oss.example.com/temp/dish_01.jpg",
+  "prompt": "请推荐一个简洁的家常中文菜名"
 }
 ```
 
@@ -224,9 +234,11 @@ server:
 
 | 场景 | HTTP 状态码 | 业务码 | 说明 |
 |---|---:|---:|---|
-| file_id 为空 | 400 | 4001001 | 缺少图片文件 ID |
-| file_id 非法 | 400 | 4001001 | 图片文件 ID 格式不合法 |
-| file_id 不可访问 | 500 | 5001002 | 后端无法通过对象存储读取图片 |
+| image_url 为空 | 400 | 4001001 | 缺少图片文件 url |
+| image_url 非法 | 400 | 4001001 | 图片文件 url 格式不合法 |
+| prompt 过长 | 400 | 4001001 | 提示词超过长度限制 |
+| image_url 不可访问或调用模型网络异常 | 500 | 5001002 | 后端无法通过对象存储读取图片或模型调用网络异常 |
+| LLM 响应无法解析 | 422 | 4221001 | 模型响应不是接口要求的结构化内容 |
 
 > 说明：LLM 生成失败不导致返回整体报错，通过 `model_status=failed` 降级，保持新增流程可继续。
 

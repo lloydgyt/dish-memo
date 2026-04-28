@@ -1,6 +1,6 @@
 # cook-history-service
 
-Spring Boot 后端服务，提供个人菜品记录 CRUD、菜名建议和“今天吃什么”随机推荐能力。接口版本为 `v1.1.0`，详细契约见 [docs/api_doc.md](/home/lloydgyt/dish-memo/docs/api_doc.md)。
+Spring Boot 后端服务，提供个人菜品记录 CRUD、基于阿里云百炼多模态模型的菜名建议和“今天吃什么”随机推荐能力。接口版本为 `v1.1.0`，详细契约见 [docs/api_doc.md](/home/lloydgyt/dish-memo/docs/api_doc.md)。
 
 ## 模块
 
@@ -8,10 +8,10 @@ Spring Boot 后端服务，提供个人菜品记录 CRUD、菜名建议和“今
 |---|---|
 | `common` | 统一响应、错误码、业务异常、全局异常处理、`X-User-Id` 校验。 |
 | `dish` | 菜品新增、列表、详情、编辑、删除、用户隔离和 MyBatis 数据访问。 |
-| `suggestion` | 基于对象存储 `file_id` 的菜名建议，包含模型失败降级语义。 |
+| `suggestion` | 基于对象存储临时 `image_url` 与 `prompt` 调用阿里云百炼 `qwen3.6-flash` 生成菜名建议。 |
 | `recommendation` | 按餐别随机返回不重复历史菜品候选。 |
 
-后端不再提供图片上传接口，也不保存或返回 `image_url`。图片由前端直传对象存储，后端仅保存并返回对象存储 `file_id`。
+后端不再提供图片上传接口，菜品记录也不保存或返回 `image_url`。图片由前端直传对象存储，新增/编辑菜品记录时后端仅保存并返回对象存储 `file_id`；生成菜名建议时前端传入对象存储临时 `image_url` 供模型识别。
 
 ## 接口
 
@@ -31,7 +31,7 @@ X-User-Id: <current-user-id>
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `POST` | `/dishes/name-suggestions` | 基于 `file_id` 生成菜名建议。 |
+| `POST` | `/dishes/name-suggestions` | 基于 `image_url` 与 `prompt` 生成菜名建议。 |
 | `POST` | `/dishes` | 新增菜品记录。 |
 | `GET` | `/dishes` | 分页查询菜品记录。 |
 | `GET` | `/dishes/{dish_id}` | 查询菜品详情。 |
@@ -76,16 +76,45 @@ CREATE TABLE IF NOT EXISTS dish_record (
 必需环境变量：
 
 ```bash
+export SERVER_PORT=8080
 export DB_ADDRESS='localhost:3306'
 export DB_USERNAME=root
 export DB_PASSWORD='your_password'
 export REDIS_HOST=localhost
 export REDIS_PORT=6379
 export REDIS_DATABASE=0
-export SERVER_PORT=8080
+export BAILIAN_API_KEY='your-bailian-api-key'
+export BAILIAN_BASE_URL='https://dashscope.aliyuncs.com/compatible-mode/v1'
+export BAILIAN_MODEL='qwen3.6-flash'
+export SUGGESTION_IMAGE_URL_ALLOWED_HOSTS='oss.example.com,img.example.com,7072-prod-d5gdc5h99b1442a27-1424479475.tcb.qcloud.la'
 ```
 
-Jackson 已配置为 `SNAKE_CASE`，API JSON 字段使用 `file_id`、`meal_type`、`created_at`、`updated_at`、`page_no`、`page_size`、`requested_size`、`actual_size`、`is_empty`、`empty_tip` 等文档格式。
+Jackson 已配置为 `SNAKE_CASE`，API JSON 字段使用 `image_url`、`suggested_name`、`model_status`、`file_id`、`meal_type`、`created_at`、`updated_at`、`page_no`、`page_size`、`requested_size`、`actual_size`、`is_empty`、`empty_tip` 等文档格式。
+
+`/dishes/name-suggestions` 请求体：
+
+```json
+{
+  "image_url": "https://oss.example.com/temp/dish_01.jpg",
+  "prompt": "请推荐一个简洁的家常中文菜名"
+}
+```
+
+成功响应：
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "suggested_name": "番茄炒蛋",
+    "model_status": "success",
+    "reason": null
+  }
+}
+```
+
+该接口只接受 `https` 图片 URL，域名必须命中 `SUGGESTION_IMAGE_URL_ALLOWED_HOSTS`。参数错误返回 `4001001`；模型网络或图片访问失败返回 `5001002`；模型响应无法解析返回 `4221001`。
 
 ## 测试与构建
 

@@ -63,18 +63,32 @@ class ApiContractTest {
     private RecommendationService recommendationService;
 
     @Test
-    void nameSuggestionUsesFileIdAndSnakeCaseResponse() throws Exception {
+    void nameSuggestionUsesImageUrlPromptAndSnakeCaseResponse() throws Exception {
         when(suggestionService.suggest(eq(USER_ID), any()))
                 .thenReturn(new NameSuggestionResponse("番茄炒蛋", "success", null));
 
         mockMvc.perform(post("/api/v1/dishes/name-suggestions")
                         .header("X-User-Id", USER_ID)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"file_id\":\"production/dish/u_1/img_01HRXYZ.jpg\"}"))
+                        .content("{"
+                                + "\"image_url\":\"https://img.example.com/dish.jpg\","
+                                + "\"prompt\":\"偏家常菜名\""
+                                + "}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.suggested_name").value("番茄炒蛋"))
                 .andExpect(jsonPath("$.data.model_status").value("success"));
+    }
+
+    @Test
+    void nameSuggestionRejectsMissingImageUrlWithDocumentedError() throws Exception {
+        mockMvc.perform(post("/api/v1/dishes/name-suggestions")
+                        .header("X-User-Id", USER_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"prompt\":\"偏家常菜名\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(4001001))
+                .andExpect(jsonPath("$.data").doesNotExist());
     }
 
     @Test
