@@ -29,10 +29,10 @@ public class SuggestionController {
     }
 
     /**
-     * Suggests a dish name from an object storage file ID.
+     * Suggests a dish name from a temporary object storage image URL.
      *
      * @param userId current user ID from gateway header
-     * @param request file ID request
+     * @param request image URL request
      * @return name suggestion result
      */
     @PostMapping("/name-suggestions")

@@ -15,8 +15,9 @@ import java.util.Map;
  * Calls Alibaba Bailian through the OpenAI-compatible Java client pattern.
  */
 public class BailianNameSuggestionClient implements NameSuggestionClient {
+    private static final String DEFAULT_USER_PROMPT = "请根据图片推荐一个适合保存到做菜记录里的中文菜名。";
     private static final String DEFAULT_SYSTEM_PROMPT = """
-            你是菜品识别和命名助手。根据图片和用户提示，只返回 JSON：
+            你是菜品识别和命名助手。根据图片，只返回 JSON：
             {"suggested_name":"不超过20个中文字符的菜名"}。
             不要返回 Markdown、解释或多余字段。
             """;
@@ -46,13 +47,12 @@ public class BailianNameSuggestionClient implements NameSuggestionClient {
      * Sends image and text input to qwen3.6-flash and parses the structured dish name.
      *
      * @param imageUrl validated image URL
-     * @param prompt user prompt or service default
      * @return structured model result
      */
     @Override
-    public ModelNameSuggestion suggest(String imageUrl, String prompt) {
+    public ModelNameSuggestion suggest(String imageUrl) {
         requireApiKey();
-        Map<String, Object> request = buildRequest(imageUrl, prompt);
+        Map<String, Object> request = buildRequest(imageUrl);
         String responseBody;
         try {
             responseBody = restClient.post()
@@ -79,8 +79,7 @@ public class BailianNameSuggestionClient implements NameSuggestionClient {
         return parseResponse(responseBody);
     }
 
-    private Map<String, Object> buildRequest(String imageUrl, String prompt) {
-        String userPrompt = StringUtils.hasText(prompt) ? prompt.trim() : "请根据图片推荐一个适合保存到做菜记录里的中文菜名。";
+    private Map<String, Object> buildRequest(String imageUrl) {
         return Map.of(
                 "model", properties.getModel(),
                 "messages", List.of(
@@ -89,7 +88,7 @@ public class BailianNameSuggestionClient implements NameSuggestionClient {
                                 "role", "user",
                                 "content", List.of(
                                         Map.of("type", "image_url", "image_url", Map.of("url", imageUrl)),
-                                        Map.of("type", "text", "text", userPrompt)
+                                        Map.of("type", "text", "text", DEFAULT_USER_PROMPT)
                                 )
                         )
                 ),

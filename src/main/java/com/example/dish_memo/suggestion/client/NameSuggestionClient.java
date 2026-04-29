@@ -6,11 +6,10 @@ package com.example.dish_memo.suggestion.client;
 public interface NameSuggestionClient {
 
     /**
-     * Generates a dish name from image URL and prompt input.
+     * Generates a dish name from the validated image URL.
      *
      * @param imageUrl validated image URL
-     * @param prompt user prompt or service default
      * @return generated model result
      */
-    ModelNameSuggestion suggest(String imageUrl, String prompt);
+    ModelNameSuggestion suggest(String imageUrl);
 }

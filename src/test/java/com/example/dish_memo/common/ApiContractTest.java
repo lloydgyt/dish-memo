@@ -63,7 +63,7 @@ class ApiContractTest {
     private RecommendationService recommendationService;
 
     @Test
-    void nameSuggestionUsesImageUrlPromptAndSnakeCaseResponse() throws Exception {
+    void nameSuggestionUsesImageUrlAndSnakeCaseResponse() throws Exception {
         when(suggestionService.suggest(eq(USER_ID), any()))
                 .thenReturn(new NameSuggestionResponse("番茄炒蛋", "success", null));
 
@@ -71,8 +71,7 @@ class ApiContractTest {
                         .header("X-User-Id", USER_ID)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{"
-                                + "\"image_url\":\"https://img.example.com/dish.jpg\","
-                                + "\"prompt\":\"偏家常菜名\""
+                                + "\"image_url\":\"https://img.example.com/dish.jpg\""
                                 + "}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
@@ -85,7 +84,7 @@ class ApiContractTest {
         mockMvc.perform(post("/api/v1/dishes/name-suggestions")
                         .header("X-User-Id", USER_ID)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"prompt\":\"偏家常菜名\"}"))
+                        .content("{}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(4001001))
                 .andExpect(jsonPath("$.data").doesNotExist());

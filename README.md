@@ -8,7 +8,7 @@ Spring Boot 后端服务，提供个人菜品记录 CRUD、基于阿里云百炼
 |---|---|
 | `common` | 统一响应、错误码、业务异常、全局异常处理、`X-User-Id` 校验。 |
 | `dish` | 菜品新增、列表、详情、编辑、删除、用户隔离和 MyBatis 数据访问。 |
-| `suggestion` | 基于对象存储临时 `image_url` 与 `prompt` 调用阿里云百炼 `qwen3.6-flash` 生成菜名建议。 |
+| `suggestion` | 基于对象存储临时 `image_url` 调用阿里云百炼 `qwen3.6-flash` 生成菜名建议。 |
 | `recommendation` | 按餐别随机返回不重复历史菜品候选。 |
 
 后端不再提供图片上传接口，菜品记录也不保存或返回 `image_url`。图片由前端直传对象存储，新增/编辑菜品记录时后端仅保存并返回对象存储 `file_id`；生成菜名建议时前端传入对象存储临时 `image_url` 供模型识别。
@@ -31,7 +31,7 @@ X-User-Id: <current-user-id>
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `POST` | `/dishes/name-suggestions` | 基于 `image_url` 与 `prompt` 生成菜名建议。 |
+| `POST` | `/dishes/name-suggestions` | 基于 `image_url` 生成菜名建议。 |
 | `POST` | `/dishes` | 新增菜品记录。 |
 | `GET` | `/dishes` | 分页查询菜品记录。 |
 | `GET` | `/dishes/{dish_id}` | 查询菜品详情。 |
@@ -41,7 +41,7 @@ X-User-Id: <current-user-id>
 
 ## 数据库
 
-建库建表脚本位于 [src/main/resources/db/schema.sql](/home/lloydgyt/dish-memo/src/main/resources/db/schema.sql)，单表建表语句也同步放在 [docs/dish_record_schema.sql](/home/lloydgyt/dish-memo/docs/dish_record_schema.sql)。
+建库建表脚本位于 [src/main/resources/db/schema.sql](/home/lloydgyt/dish-memo/src/main/resources/db/schema.sql)。
 
 初始化：
 
@@ -49,13 +49,13 @@ X-User-Id: <current-user-id>
 mysql -uroot -p < src/main/resources/db/schema.sql
 ```
 
-核心表 `dish_record` 字段与 API 文档一致，图片字段为 `file_id`：
+核心表 `dish_record` 的图片字段为 `file_id`；菜名长度由接口层按 API 文档限制为 1~50 字符：
 
 ```sql
 CREATE TABLE IF NOT EXISTS dish_record (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
     user_id VARCHAR(64) NOT NULL,
-    name VARCHAR(50) NOT NULL,
+    name VARCHAR(128) NOT NULL,
     file_id VARCHAR(512) NOT NULL,
     note TEXT NULL,
     date DATE NOT NULL,
@@ -95,8 +95,7 @@ Jackson 已配置为 `SNAKE_CASE`，API JSON 字段使用 `image_url`、`suggest
 
 ```json
 {
-  "image_url": "https://oss.example.com/temp/dish_01.jpg",
-  "prompt": "请推荐一个简洁的家常中文菜名"
+  "image_url": "https://oss.example.com/temp/dish_01.jpg"
 }
 ```
 
@@ -114,7 +113,7 @@ Jackson 已配置为 `SNAKE_CASE`，API JSON 字段使用 `image_url`、`suggest
 }
 ```
 
-该接口只接受 `https` 图片 URL，域名必须命中 `SUGGESTION_IMAGE_URL_ALLOWED_HOSTS`。参数错误返回 `4001001`；模型网络或图片访问失败返回 `5001002`；模型响应无法解析返回 `4221001`。
+该接口只接受 `https` 图片 URL，域名必须命中 `SUGGESTION_IMAGE_URL_ALLOWED_HOSTS`。模型普通生成失败返回 `model_status=failed` 的降级成功响应；参数错误返回 `4001001`；模型网络或图片访问失败返回 `5001002`；模型响应无法解析返回 `4221001`。
 
 ## 测试与构建
 

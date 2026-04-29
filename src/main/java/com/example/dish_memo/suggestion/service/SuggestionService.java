@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Provides dish name suggestions from validated image URL and prompt input.
+ * Provides dish name suggestions from validated image URL input.
  */
 @Service
 public class SuggestionService {
@@ -39,7 +39,7 @@ public class SuggestionService {
     }
 
     /**
-     * Generates a dish name suggestion from an image URL and optional prompt.
+     * Generates a dish name suggestion from an image URL.
      *
      * @param userId current user ID
      * @param request image suggestion request
@@ -48,11 +48,13 @@ public class SuggestionService {
     public NameSuggestionResponse suggest(String userId, NameSuggestionRequest request) {
         LOGGER.info(StructuredLogUtils.info(userId, "suggest dish name"));
         String imageUrl = normalizeImageUrl(request.imageUrl());
-        String prompt = normalizePrompt(request.prompt());
         try {
-            ModelNameSuggestion result = nameSuggestionClient.suggest(imageUrl, prompt);
+            ModelNameSuggestion result = nameSuggestionClient.suggest(imageUrl);
             return new NameSuggestionResponse(result.suggestedName(), "success", null);
         } catch (NameSuggestionClientException ex) {
+            if (ex.reason() == NameSuggestionClientException.Reason.MODEL_ERROR) {
+                return new NameSuggestionResponse(null, "failed", ex.getMessage());
+            }
             throw toBusinessException(ex);
         }
     }
@@ -78,10 +80,6 @@ public class SuggestionService {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "image_url host is not allowed");
         }
         return trimmed;
-    }
-
-    private String normalizePrompt(String prompt) {
-        return StringUtils.hasText(prompt) ? prompt.trim() : null;
     }
 
     private boolean isAllowedHost(String host) {

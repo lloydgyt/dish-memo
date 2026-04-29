@@ -33,6 +33,7 @@ class BailianNameSuggestionClientTest {
                 .andExpect(header("Authorization", "Bearer test-key"))
                 .andExpect(jsonPath("$.model").value("qwen3.6-flash"))
                 .andExpect(jsonPath("$.messages[1].content[0].image_url.url").value("https://img.example.com/dish.jpg"))
+                .andExpect(jsonPath("$.messages[1].content[1].text").value("请根据图片推荐一个适合保存到做菜记录里的中文菜名。"))
                 .andRespond(withSuccess("""
                         {
                           "choices": [
@@ -45,7 +46,7 @@ class BailianNameSuggestionClientTest {
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        ModelNameSuggestion result = client.suggest("https://img.example.com/dish.jpg", "偏家常");
+        ModelNameSuggestion result = client.suggest("https://img.example.com/dish.jpg");
 
         assertThat(result.suggestedName()).isEqualTo("番茄炒蛋");
         server.verify();
@@ -63,7 +64,7 @@ class BailianNameSuggestionClientTest {
         server.expect(requestTo("https://dashscope.test/compatible-mode/v1/chat/completions"))
                 .andRespond(withServerError());
 
-        assertThatThrownBy(() -> client.suggest("https://img.example.com/dish.jpg", null))
+        assertThatThrownBy(() -> client.suggest("https://img.example.com/dish.jpg"))
                 .isInstanceOf(NameSuggestionClientException.class)
                 .extracting("reason")
                 .isEqualTo(NameSuggestionClientException.Reason.MODEL_ERROR);
