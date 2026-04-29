@@ -7,12 +7,16 @@ import com.example.dish_memo.suggestion.client.NameSuggestionClient;
 import com.example.dish_memo.suggestion.client.NameSuggestionClientException;
 import com.example.dish_memo.suggestion.config.SuggestionProperties;
 import com.example.dish_memo.suggestion.service.SuggestionService;
-import org.springframework.boot.test.system.CapturedOutput;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
+
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@ExtendWith(OutputCaptureExtension.class)
 class SuggestionServiceTest {
 
     @Test
