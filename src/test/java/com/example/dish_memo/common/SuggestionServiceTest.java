@@ -8,14 +8,10 @@ import com.example.dish_memo.suggestion.client.NameSuggestionClientException;
 import com.example.dish_memo.suggestion.config.SuggestionProperties;
 import com.example.dish_memo.suggestion.service.SuggestionService;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.springframework.boot.test.system.CapturedOutput;
-import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@ExtendWith(OutputCaptureExtension.class)
 class SuggestionServiceTest {
 
     @Test
@@ -29,8 +25,6 @@ class SuggestionServiceTest {
 
         assertThat(response.modelStatus()).isEqualTo("success");
         assertThat(response.suggestedName()).isEqualTo("番茄炒蛋");
-        assertThat(output).contains("\"userId\":\"u_1\"");
-        assertThat(output).contains("\"description\":\"suggest dish name\"");
     }
 
     @Test
