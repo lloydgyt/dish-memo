@@ -2,7 +2,6 @@ package com.example.dish_memo.dish.service;
 
 import com.example.dish_memo.common.BusinessException;
 import com.example.dish_memo.common.ErrorCode;
-import com.example.dish_memo.common.StructuredLogUtils;
 import com.example.dish_memo.dish.dto.DeleteDishResponse;
 import com.example.dish_memo.dish.dto.CreateDishResponse;
 import com.example.dish_memo.dish.dto.DishListItemResponse;
@@ -13,8 +12,6 @@ import com.example.dish_memo.dish.dto.DishResponse;
 import com.example.dish_memo.dish.dto.UpdateDishResponse;
 import com.example.dish_memo.dish.dto.MealType;
 import com.example.dish_memo.dish.mapper.DishMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -29,7 +26,6 @@ import java.util.regex.Pattern;
  */
 @Service
 public class DishService {
-    private static final Logger LOGGER = LoggerFactory.getLogger(DishService.class);
     private static final Pattern FILE_ID_PATTERN = Pattern.compile(
             "^(cloud://.+|(?:development|production)/dish/[^/\\s]+/[^\\s]+)$"
     );
@@ -53,7 +49,6 @@ public class DishService {
      * @return created dish response
      */
     public CreateDishResponse create(String userId, DishRequest request) {
-        LOGGER.info(StructuredLogUtils.info(userId, "create dish record"));
         MealType mealType = MealType.from(request.mealType());
         LocalDateTime now = LocalDateTime.now();
         DishRecord record = new DishRecord();
@@ -86,7 +81,6 @@ public class DishService {
             LocalDate dateTo,
             String keyword
     ) {
-        LOGGER.info(StructuredLogUtils.info(userId, "list dish records"));
         validatePage(pageNo, pageSize);
         String parsedMealType = StringUtils.hasText(mealType) ? MealType.from(mealType).name() : null;
         if (dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) {
@@ -114,7 +108,6 @@ public class DishService {
      * @return full dish response
      */
     public DishResponse get(String userId, String dishId) {
-        LOGGER.info(StructuredLogUtils.info(userId, "get dish record"));
         return DishResponse.from(requireOwnedRecord(userId, dishId));
     }
 
@@ -127,7 +120,6 @@ public class DishService {
      * @return updated dish response
      */
     public UpdateDishResponse update(String userId, String dishId, DishRequest request) {
-        LOGGER.info(StructuredLogUtils.info(userId, "update dish record"));
         DishRecord record = requireOwnedRecord(userId, dishId);
         MealType mealType = MealType.from(request.mealType());
         fillRecord(record, request, mealType, LocalDateTime.now());
@@ -143,7 +135,6 @@ public class DishService {
      * @return delete response
      */
     public DeleteDishResponse delete(String userId, String dishId) {
-        LOGGER.info(StructuredLogUtils.info(userId, "delete dish record"));
         requireOwnedRecord(userId, dishId);
         dishMapper.deleteByIdAndUserId(dishId, userId);
         return new DeleteDishResponse(true);
@@ -157,7 +148,6 @@ public class DishService {
      * @return candidate dish records
      */
     public List<DishRecord> listRecommendationCandidates(String userId, String mealType) {
-        LOGGER.info(StructuredLogUtils.info(userId, "list recommendation candidates"));
         MealType parsedMealType = MealType.from(mealType);
         return dishMapper.listByUserIdAndMealType(userId, parsedMealType.name());
     }

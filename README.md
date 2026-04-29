@@ -41,7 +41,7 @@ X-User-Id: <current-user-id>
 
 ## 数据库
 
-建库建表脚本位于 [src/main/resources/db/schema.sql](/home/lloydgyt/dish-memo/src/main/resources/db/schema.sql)，单表建表语句也同步放在 [docs/dish_record_schema.sql](/home/lloydgyt/dish-memo/docs/dish_record_schema.sql)。
+建库建表脚本位于 [src/main/resources/db/schema.sql](/home/lloydgyt/dish-memo/src/main/resources/db/schema.sql)。
 
 初始化：
 
@@ -131,9 +131,10 @@ mvn spring-boot:run
 
 ## 日志
 
-日志配置文件为 [src/main/resources/logback.xml](/home/lloydgyt/dish-memo/src/main/resources/logback.xml)。用户 API 与核心 Service 使用 `slf4j` 输出 JSON 结构化日志：
+日志配置文件为 [src/main/resources/logback.xml](/home/lloydgyt/dish-memo/src/main/resources/logback.xml)。`/api/v1/**` 请求在 Controller 入口由拦截器统一输出一条 JSON 结构化请求日志：
 
-- `DishService`、`RecommendationService`、`SuggestionService` 的业务入口输出 `INFO`。
-- `GlobalExceptionHandler` 的异常分支输出 `WARN`。
-- 日志包含 `userId` 和 `description`；异常日志额外包含 `exceptionType` 和 `exceptionMessage`。
-- 日志工具会脱敏常见 `password`、`token`、`authorization`、`access_token`、`refresh_token` 明文值。
+- 请求日志字段固定包含 `request_id`、`user_id`、`request_params`、`method`、`path`、`status`、`duration_ms`。
+- `request_id` 优先读取 `X-Request-Id`，缺失时自动生成 UUID。
+- `user_id` 读取 `X-User-Id`，缺失时记录为 `UNKNOWN`。
+- `request_params` 会在输出前脱敏，命中 `password`、`token`、`authorization`、`access_token`、`refresh_token` 等敏感参数名时值固定为 `[REDACTED]`。
+- `GlobalExceptionHandler` 的异常分支仍输出 `WARN` 结构化日志，包含 `userId`、`description`、`exceptionType` 和已脱敏的 `exceptionMessage`。

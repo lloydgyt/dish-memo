@@ -2,15 +2,12 @@ package com.example.dish_memo.suggestion.service;
 
 import com.example.dish_memo.common.BusinessException;
 import com.example.dish_memo.common.ErrorCode;
-import com.example.dish_memo.common.StructuredLogUtils;
 import com.example.dish_memo.suggestion.client.ModelNameSuggestion;
 import com.example.dish_memo.suggestion.client.NameSuggestionClient;
 import com.example.dish_memo.suggestion.client.NameSuggestionClientException;
 import com.example.dish_memo.suggestion.config.SuggestionProperties;
 import com.example.dish_memo.suggestion.dto.NameSuggestionRequest;
 import com.example.dish_memo.suggestion.dto.NameSuggestionResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -23,7 +20,6 @@ import java.util.Locale;
  */
 @Service
 public class SuggestionService {
-    private static final Logger LOGGER = LoggerFactory.getLogger(SuggestionService.class);
     private final NameSuggestionClient nameSuggestionClient;
     private final SuggestionProperties properties;
 
@@ -46,7 +42,6 @@ public class SuggestionService {
      * @return suggestion result with model status
      */
     public NameSuggestionResponse suggest(String userId, NameSuggestionRequest request) {
-        LOGGER.info(StructuredLogUtils.info(userId, "suggest dish name"));
         String imageUrl = normalizeImageUrl(request.imageUrl());
         String prompt = normalizePrompt(request.prompt());
         try {

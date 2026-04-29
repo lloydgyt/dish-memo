@@ -16,9 +16,12 @@ import com.example.dish_memo.suggestion.controller.SuggestionController;
 import com.example.dish_memo.suggestion.dto.NameSuggestionResponse;
 import com.example.dish_memo.suggestion.service.SuggestionService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
@@ -28,6 +31,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -43,8 +47,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         SuggestionController.class,
         RecommendationController.class
 })
-@Import({WebConfig.class, UserContextInterceptor.class, GlobalExceptionHandler.class})
+@Import({WebConfig.class, RequestLoggingInterceptor.class, UserContextInterceptor.class, GlobalExceptionHandler.class})
 @TestPropertySource(properties = "spring.jackson.property-naming-strategy=SNAKE_CASE")
+@ExtendWith(OutputCaptureExtension.class)
 class ApiContractTest {
     private static final String USER_ID = "u_1";
     private static final String FILE_ID = "production/dish/u_1/img_01HRXYZ.jpg";
@@ -184,7 +189,7 @@ class ApiContractTest {
     }
 
     @Test
-    void todayMealsUsesDocumentedRecommendationFields() throws Exception {
+    void todayMealsUsesDocumentedRecommendationFields(CapturedOutput output) throws Exception {
         when(recommendationService.todayMeals(USER_ID, "breakfast", 3)).thenReturn(new TodayMealsResponse(
                 "breakfast",
                 3,
@@ -206,11 +211,37 @@ class ApiContractTest {
                 .andExpect(jsonPath("$.data.actual_size").value(1))
                 .andExpect(jsonPath("$.data.is_empty").value(false))
                 .andExpect(jsonPath("$.data.list[0].file_id").value(FILE_ID));
+
+        assertThat(output).contains("\"request_id\"");
+        assertThat(output).contains("\"user_id\":\"u_1\"");
+        assertThat(output).contains("\"request_params\"");
+        assertThat(output).contains("\"meal_type\":\"breakfast\"");
+        assertThat(output).contains("\"refresh_token\":\"[REDACTED]\"");
+        assertThat(output).contains("\"method\":\"GET\"");
+        assertThat(output).contains("\"path\":\"/api/v1/recommendations/today-meals\"");
+        assertThat(output).contains("\"status\":200");
+        assertThat(output).contains("\"duration_ms\"");
+        assertThat(output).doesNotContain("r_1");
     }
 
     @Test
     void removedImageUploadEndpointIsNotAvailable() throws Exception {
         mockMvc.perform(post("/api/v1/files/images").header("X-User-Id", USER_ID))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void requestLogContainsStatusAndDurationForErrorResponse(CapturedOutput output) throws Exception {
+        mockMvc.perform(get("/api/v1/dishes")
+                        .header("X-Request-Id", "req_error")
+                        .param("page_size", "20"))
+                .andExpect(status().isUnauthorized());
+
+        assertThat(output).contains("\"request_id\":\"req_error\"");
+        assertThat(output).contains("\"user_id\":\"UNKNOWN\"");
+        assertThat(output).contains("\"method\":\"GET\"");
+        assertThat(output).contains("\"path\":\"/api/v1/dishes\"");
+        assertThat(output).contains("\"status\":401");
+        assertThat(output).contains("\"duration_ms\"");
     }
 }
