@@ -14,6 +14,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class RecommendationServiceTest {
@@ -29,6 +30,7 @@ class RecommendationServiceTest {
         assertThat(response.isEmpty()).isTrue();
         assertThat(response.actualSize()).isZero();
         assertThat(response.emptyTip()).isEqualTo("你还没有记录过这类餐食");
+        verify(dishService).listRecommendationCandidates("u_1", "breakfast");
     }
 
     @Test

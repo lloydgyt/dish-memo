@@ -6,7 +6,7 @@ Spring Boot 后端服务，提供个人菜品记录 CRUD、基于阿里云百炼
 
 | 模块 | 职责 |
 |---|---|
-| `common` | 统一响应、错误码、业务异常、全局异常处理、`X-User-Id` 校验。 |
+| `common` | 统一响应、错误码、业务异常、全局异常处理、`X-WX-OPENID` 校验。 |
 | `dish` | 菜品新增、列表、详情、编辑、删除、用户隔离和 MyBatis 数据访问。 |
 | `suggestion` | 基于对象存储临时 `image_url` 与 `prompt` 调用阿里云百炼 `qwen3.6-flash` 生成菜名建议。 |
 | `recommendation` | 按餐别随机返回不重复历史菜品候选。 |
@@ -24,8 +24,10 @@ http://localhost:8080/api/v1
 所有业务接口都需要 Header：
 
 ```text
-X-User-Id: <current-user-id>
+X-WX-OPENID: <current-user-openid>
 ```
+
+服务端严格以 `X-WX-OPENID` 作为 `dish_record.user_id` 的数据路由依据。菜品查询、详情、编辑、删除和推荐候选查询都会在数据库访问前注入当前 OpenID 过滤条件；旧的 `X-User-Id` 不再作为身份来源。
 
 当前实现的接口：
 
@@ -135,6 +137,6 @@ mvn spring-boot:run
 
 - 请求日志字段固定包含 `request_id`、`user_id`、`request_params`、`method`、`path`、`status`、`duration_ms`。
 - `request_id` 优先读取 `X-Request-Id`，缺失时自动生成 UUID。
-- `user_id` 读取 `X-User-Id`，缺失时记录为 `UNKNOWN`。
+- `user_id` 读取 `X-WX-OPENID`，缺失时记录为 `UNKNOWN`。
 - `request_params` 会在输出前脱敏，命中 `password`、`token`、`authorization`、`access_token`、`refresh_token` 等敏感参数名时值固定为 `[REDACTED]`。
 - `GlobalExceptionHandler` 的异常分支仍输出 `WARN` 结构化日志，包含 `userId`、`description`、`exceptionType` 和已脱敏的 `exceptionMessage`。

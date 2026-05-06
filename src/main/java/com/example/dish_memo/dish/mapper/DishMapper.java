@@ -29,13 +29,14 @@ public interface DishMapper {
     void insert(DishRecord record);
 
     /**
-     * Finds a dish by ID without user filtering for not-found versus forbidden checks.
+     * Finds a dish owned by the current user.
      *
      * @param id dish ID
-     * @return matching record or null
+     * @param userId current user ID
+     * @return matching owned record or null
      */
-    @Select("SELECT * FROM dish_record WHERE id = #{id}")
-    DishRecord findById(@Param("id") String id);
+    @Select("SELECT * FROM dish_record WHERE id = #{id} AND user_id = #{userId}")
+    DishRecord findByIdAndUserId(@Param("id") String id, @Param("userId") String userId);
 
     /**
      * Updates an existing dish record.

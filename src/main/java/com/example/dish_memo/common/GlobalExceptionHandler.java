@@ -85,9 +85,9 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         warn(request, "handle missing request header exception", ex);
-        if ("X-User-Id".equalsIgnoreCase(ex.getHeaderName())) {
+        if (ApiHeaders.WX_OPENID.equalsIgnoreCase(ex.getHeaderName())) {
             return ResponseEntity.status(ErrorCode.AUTH_FAILED.status())
-                    .body(ApiResponse.error(ErrorCode.AUTH_FAILED, "X-User-Id is required"));
+                    .body(ApiResponse.error(ErrorCode.AUTH_FAILED, ApiHeaders.WX_OPENID + " is required"));
         }
         return parameterError("required header is missing");
     }
@@ -128,7 +128,7 @@ public class GlobalExceptionHandler {
     }
 
     private String userId(HttpServletRequest request) {
-        return request == null ? StructuredLogUtils.UNKNOWN_USER_ID : request.getHeader("X-User-Id");
+        return request == null ? StructuredLogUtils.UNKNOWN_USER_ID : request.getHeader(ApiHeaders.WX_OPENID);
     }
 
     private ResponseEntity<ApiResponse<Void>> parameterError(String message) {

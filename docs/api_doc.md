@@ -1,4 +1,4 @@
-# 做过的菜记录服务 API 文档
+## 做过的菜记录服务 API 文档
 
 - **服务名称**：cook-history-service
 
@@ -26,10 +26,10 @@
 
 | Header | 类型 | 必填 | 说明 |
 |---|---|---:|---|
-| `X-User-Id` | string | 是 | 当前登录用户 ID，由网关注入 |
 | `X-Request-Id` | string | 否 | 请求链路追踪 ID |
+| `X-WX-OPENID` | string | 是 | 微信 openid（作为后续操作的 user_id），生产环境下由微信云托管注入，开发环境下由前端注入 |
 
-> 服务端以 `X-User-Id` 作为数据隔离依据，任何查询、编辑、删除、推荐操作均仅作用于当前用户自己的菜品数据。
+> 服务端以 `X-WX-OPENID` 作为数据隔离依据，任何查询、编辑、删除、推荐操作均仅作用于当前用户自己的菜品数据。
 
 ### 2.2 通用响应结构
 
@@ -102,12 +102,15 @@ development/dish/u_1001/img_01HRXYZ.jpg
 
 配置 MySQL、Redis、阿里云百炼：
 
+- 生产环境通过 Dockerfile 进行配置（敏感信息如密码，api-key等通过云托管部署参数进行配置）
+- 开发环境通过环境变量进行配置（具体看项目的 README.md）
+
 ```yaml
 spring:
   datasource:
     url: jdbc:mysql://localhost:3306/dish_memo
     username: root
-    password: PASSWORD
+    password: ${PASSWORD}
   data:
     redis:
       host: localhost
@@ -119,7 +122,7 @@ server:
 
 dish-memo:
   suggestion:
-    image-url-allowed-hosts: oss.example.com,img.example.com
+    image-url-allowed-hosts: oss.example.com,img.example.com,7072-prod-d5gdc5h99b1442a27-1424479475.tcb.qcloud.la
     bailian:
       api-key: ${BAILIAN_API_KEY}
       base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
@@ -174,7 +177,7 @@ dish-memo:
 
 - **方法**：`POST`
 - **路径**：`/dishes/name-suggestions`
-- **说明**：根据前端已上传到对象存储的图片临时 URL 和提示词调用阿里云百炼 `qwen3.6-flash` 多模态模型，生成 1 个菜名建议；失败时前端应允许用户手动填写。
+- **说明**：根据前端已上传到对象存储的图片临时 URL 调用阿里云百炼 `qwen3.6-flash` 多模态模型，生成 1 个菜名建议；失败时前端应允许用户手动填写。
 
 ### 请求参数
 
@@ -183,14 +186,12 @@ dish-memo:
 | 参数名 | 类型 | 必填 | 说明 | 约束/示例 |
 |---|---|---:|---|---|
 | image_url | string | 是 | 对象存储文件的临时 URL | 仅允许 `https`，域名必须命中服务端白名单 |
-| prompt | string | 否 | 生成提示词 | 最大 500 字符；为空时使用服务端默认提示词 |
 
 ### 请求示例
 
 ```json
 {
-  "image_url": "https://oss.example.com/temp/dish_01.jpg",
-  "prompt": "请推荐一个简洁的家常中文菜名"
+  "image_url": "https://oss.example.com/temp/dish_01.jpg"
 }
 ```
 
@@ -236,7 +237,6 @@ dish-memo:
 |---|---:|---:|---|
 | image_url 为空 | 400 | 4001001 | 缺少图片文件 url |
 | image_url 非法 | 400 | 4001001 | 图片文件 url 格式不合法 |
-| prompt 过长 | 400 | 4001001 | 提示词超过长度限制 |
 | image_url 不可访问或调用模型网络异常 | 500 | 5001002 | 后端无法通过对象存储读取图片或模型调用网络异常 |
 | LLM 响应无法解析 | 422 | 4221001 | 模型响应不是接口要求的结构化内容 |
 

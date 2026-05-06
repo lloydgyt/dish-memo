@@ -45,14 +45,14 @@ class DishServiceTest {
     @Test
     void getRejectsOtherUsersRecordAsForbidden() {
         DishMapper mapper = mock(DishMapper.class);
-        DishRecord record = record("dish_1", "u_owner", "lunch");
-        when(mapper.findById("dish_1")).thenReturn(record);
+        when(mapper.findByIdAndUserId("dish_1", "u_other")).thenReturn(null);
         DishService service = new DishService(mapper);
 
         assertThatThrownBy(() -> service.get("u_other", "dish_1"))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.FORBIDDEN);
+        verify(mapper).findByIdAndUserId("dish_1", "u_other");
     }
 
     @Test

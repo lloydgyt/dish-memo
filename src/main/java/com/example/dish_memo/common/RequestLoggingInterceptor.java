@@ -19,7 +19,6 @@ public class RequestLoggingInterceptor implements HandlerInterceptor {
     private static final String START_TIME_ATTRIBUTE = RequestLoggingInterceptor.class.getName() + ".startTime";
     private static final String REQUEST_ID_ATTRIBUTE = RequestLoggingInterceptor.class.getName() + ".requestId";
     private static final String REQUEST_ID_HEADER = "X-Request-Id";
-    private static final String USER_ID_HEADER = "X-User-Id";
 
     /**
      * Captures request metadata before controller execution and downstream validation.
@@ -54,7 +53,7 @@ public class RequestLoggingInterceptor implements HandlerInterceptor {
         long durationMs = durationMs(request.getAttribute(START_TIME_ATTRIBUTE));
         LOGGER.info(StructuredLogUtils.request(
                 String.valueOf(request.getAttribute(REQUEST_ID_ATTRIBUTE)),
-                request.getHeader(USER_ID_HEADER),
+                request.getHeader(ApiHeaders.WX_OPENID),
                 request.getParameterMap(),
                 request.getMethod(),
                 request.getRequestURI(),

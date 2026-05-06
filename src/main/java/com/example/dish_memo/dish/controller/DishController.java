@@ -1,6 +1,7 @@
 package com.example.dish_memo.dish.controller;
 
 import com.example.dish_memo.common.ApiResponse;
+import com.example.dish_memo.common.ApiHeaders;
 import com.example.dish_memo.dish.dto.CreateDishResponse;
 import com.example.dish_memo.dish.dto.DeleteDishResponse;
 import com.example.dish_memo.dish.dto.DishPageResponse;
@@ -43,13 +44,13 @@ public class DishController {
     /**
      * Creates a dish record for the current user.
      *
-     * @param userId current user ID from gateway header
+     * @param userId current OpenID from gateway header
      * @param request create request
      * @return created dish response
      */
     @PostMapping
     public ApiResponse<CreateDishResponse> create(
-            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader(ApiHeaders.WX_OPENID) String userId,
             @Valid @RequestBody DishRequest request
     ) {
         return ApiResponse.ok(dishService.create(userId, request));
@@ -58,7 +59,7 @@ public class DishController {
     /**
      * Lists current user's dishes with pagination and filters.
      *
-     * @param userId current user ID from gateway header
+     * @param userId current OpenID from gateway header
      * @param pageNo page number
      * @param pageSize page size
      * @param mealType optional meal type
@@ -69,7 +70,7 @@ public class DishController {
      */
     @GetMapping
     public ApiResponse<DishPageResponse> list(
-            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader(ApiHeaders.WX_OPENID) String userId,
             @RequestParam(name = "page_no", defaultValue = "1") int pageNo,
             @RequestParam(name = "page_size", defaultValue = "20") int pageSize,
             @RequestParam(name = "meal_type", required = false) String mealType,
@@ -83,13 +84,13 @@ public class DishController {
     /**
      * Gets one dish record for the current user.
      *
-     * @param userId current user ID from gateway header
+     * @param userId current OpenID from gateway header
      * @param dishId requested dish ID
      * @return dish detail
      */
     @GetMapping("/{dish_id}")
     public ApiResponse<DishResponse> get(
-            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader(ApiHeaders.WX_OPENID) String userId,
             @PathVariable("dish_id") String dishId
     ) {
         return ApiResponse.ok(dishService.get(userId, dishId));
@@ -98,14 +99,14 @@ public class DishController {
     /**
      * Updates one dish record for the current user.
      *
-     * @param userId current user ID from gateway header
+     * @param userId current OpenID from gateway header
      * @param dishId requested dish ID
      * @param request update request
      * @return updated dish
      */
     @PutMapping("/{dish_id}")
     public ApiResponse<UpdateDishResponse> update(
-            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader(ApiHeaders.WX_OPENID) String userId,
             @PathVariable("dish_id") String dishId,
             @Valid @RequestBody DishRequest request
     ) {
@@ -115,13 +116,13 @@ public class DishController {
     /**
      * Deletes one dish record for the current user.
      *
-     * @param userId current user ID from gateway header
+     * @param userId current OpenID from gateway header
      * @param dishId requested dish ID
      * @return delete result
      */
     @DeleteMapping("/{dish_id}")
     public ApiResponse<DeleteDishResponse> delete(
-            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader(ApiHeaders.WX_OPENID) String userId,
             @PathVariable("dish_id") String dishId
     ) {
         return ApiResponse.ok(dishService.delete(userId, dishId));
