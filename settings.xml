@@ -158,10 +158,10 @@ under the License.
      -->
 
     <mirror>
-      <id>tencent</id>
-      <name>tencent maven mirror</name>
-      <url>https://mirrors.tencent.com/nexus/repository/maven-public/</url>
+      <id>aliyun-maven</id>
       <mirrorOf>*</mirrorOf>
+      <name>阿里云公共仓库</name>
+      <url>https://maven.aliyun.com/repository/public</url>
     </mirror>
   </mirrors>
 
