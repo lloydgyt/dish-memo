@@ -22,9 +22,11 @@ public class UserContextInterceptor implements HandlerInterceptor {
      */
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
-        String userId = request.getHeader("X-User-Id");
+
+        String userId = request.getHeader("X-WX-OPENID");
         if (!StringUtils.hasText(userId)) {
-            throw new BusinessException(ErrorCode.AUTH_FAILED, "X-User-Id is required");
+            System.out.println("X-WX-OPENID: " + userId);
+            throw new BusinessException(ErrorCode.AUTH_FAILED, "X-WX-OPENID is required");
         }
         return true;
     }
