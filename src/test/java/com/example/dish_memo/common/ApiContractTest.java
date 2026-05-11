@@ -47,8 +47,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         SuggestionController.class,
         RecommendationController.class
 })
-@Import({WebConfig.class, RequestLoggingInterceptor.class, UserContextInterceptor.class, GlobalExceptionHandler.class})
-@TestPropertySource(properties = "spring.jackson.property-naming-strategy=SNAKE_CASE")
+@Import({WebConfig.class, RequestLoggingFilter.class, UserContextInterceptor.class, GlobalExceptionHandler.class})
+@TestPropertySource(properties = {
+        "spring.jackson.property-naming-strategy=SNAKE_CASE",
+        "dish-memo.logging.slow-request-threshold-ms=-1"
+})
 @ExtendWith(OutputCaptureExtension.class)
 class ApiContractTest {
     private static final String USER_ID = "openid_u_1";
@@ -217,10 +220,10 @@ class ApiContractTest {
         assertThat(output).contains("\"request_params\"");
         assertThat(output).contains("\"meal_type\":\"breakfast\"");
         assertThat(output).contains("\"refresh_token\":\"[REDACTED]\"");
-        assertThat(output).contains("\"method\":\"GET\"");
-        assertThat(output).contains("\"path\":\"/api/v1/recommendations/today-meals\"");
+        assertThat(output).contains("\"route\":\"GET /api/v1/recommendations/today-meals\"");
         assertThat(output).contains("\"status\":200");
         assertThat(output).contains("\"duration_ms\"");
+        assertThat(output).contains("\"db_duration_ms\"");
         assertThat(output).doesNotContain("r_1");
     }
 
@@ -249,9 +252,22 @@ class ApiContractTest {
 
         assertThat(output).contains("\"request_id\":\"req_error\"");
         assertThat(output).contains("\"user_id\":\"UNKNOWN\"");
-        assertThat(output).contains("\"method\":\"GET\"");
-        assertThat(output).contains("\"path\":\"/api/v1/dishes\"");
+        assertThat(output).contains("\"route\":\"GET /api/v1/dishes\"");
         assertThat(output).contains("\"status\":401");
         assertThat(output).contains("\"duration_ms\"");
+        assertThat(output).contains("\"db_duration_ms\":0");
+    }
+
+    @Test
+    void requestLogIncludesSummaryWhenUserInterceptorRejectsRequest(CapturedOutput output) throws Exception {
+        mockMvc.perform(get("/api/v1/recommendations/today-meals")
+                        .header("X-Request-Id", "req_auth_failed")
+                        .param("meal_type", "breakfast"))
+                .andExpect(status().isUnauthorized());
+
+        assertThat(output).contains("\"request_id\":\"req_auth_failed\"");
+        assertThat(output).contains("\"route\":\"GET /api/v1/recommendations/today-meals\"");
+        assertThat(output).contains("\"status\":401");
+        assertThat(output).contains("\"db_duration_ms\":0");
     }
 }

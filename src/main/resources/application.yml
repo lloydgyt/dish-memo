@@ -32,3 +32,5 @@ dish-memo:
       model: ${BAILIAN_MODEL:qwen3.6-flash}
       connect-timeout: ${BAILIAN_CONNECT_TIMEOUT:3s}
       read-timeout: ${BAILIAN_READ_TIMEOUT:15s}
+  logging:
+    slow-request-threshold-ms: 1000

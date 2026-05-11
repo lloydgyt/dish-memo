@@ -6,11 +6,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * Builds safe JSON log payloads for user-facing API request and exception events.
+ * Builds safe JSON log payloads for user-facing API request, phase and exception events.
  */
 public final class StructuredLogUtils {
     public static final String UNKNOWN_USER_ID = "UNKNOWN";
@@ -46,34 +47,57 @@ public final class StructuredLogUtils {
     }
 
     /**
-     * Creates a JSON payload for controller request completion logs.
+     * Creates the documented summary log emitted once for every API request.
      *
      * @param requestId stable request ID from the inbound header or generated UUID
      * @param userId current request user ID
      * @param requestParams sanitized query parameter map
-     * @param method HTTP method
-     * @param path request path
+     * @param route HTTP method and request path
      * @param status final HTTP status
      * @param durationMs request duration in milliseconds
-     * @return JSON log payload containing all request audit fields
+     * @param dbDurationMs accumulated Mapper duration in milliseconds
+     * @return JSON log payload containing the documented summary log fields
      */
     public static String request(
             String requestId,
             String userId,
             Map<String, String[]> requestParams,
-            String method,
-            String path,
+            String route,
             int status,
-            long durationMs
+            long durationMs,
+            long dbDurationMs
     ) {
         Map<String, Object> fields = new LinkedHashMap<>();
         fields.put("request_id", sanitize(requestId));
         fields.put("user_id", sanitize(hasText(userId) ? userId : UNKNOWN_USER_ID));
         fields.put("request_params", sanitizeParameters(requestParams));
-        fields.put("method", sanitize(method));
-        fields.put("path", sanitize(path));
+        fields.put("route", sanitize(route));
         fields.put("status", status);
         fields.put("duration_ms", Math.max(durationMs, 0));
+        fields.put("db_duration_ms", Math.max(dbDurationMs, 0));
+        return toJson(fields);
+    }
+
+    /**
+     * Creates the documented detailed phase log for requests that exceed the configured threshold.
+     *
+     * @param requestId stable request ID from the inbound header or generated UUID
+     * @param controllerMs measured controller/request phase duration
+     * @param serviceMs measured service phase duration, or zero when no separate timing is available
+     * @param mapperLogs Mapper execution details captured during this request
+     * @return JSON log payload containing the documented phase log fields
+     */
+    public static String requestPhase(
+            String requestId,
+            long controllerMs,
+            long serviceMs,
+            List<RequestLogContext.MapperLog> mapperLogs
+    ) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("request_id", sanitize(requestId));
+        fields.put("controller_ms", Math.max(controllerMs, 0));
+        fields.put("service_ms", Math.max(serviceMs, 0));
+        fields.put("mapper", mapperFields(mapperLogs));
         return toJson(fields);
     }
 
@@ -121,6 +145,21 @@ public final class StructuredLogUtils {
 
     private static boolean isSensitiveKey(String name) {
         return name != null && SENSITIVE_KEY_PATTERN.matcher(name).matches();
+    }
+
+    private static List<Map<String, Object>> mapperFields(List<RequestLogContext.MapperLog> mapperLogs) {
+        if (mapperLogs == null || mapperLogs.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return mapperLogs.stream().map(mapperLog -> {
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("duration_ms", Math.max(mapperLog.durationMs(), 0));
+            fields.put("statement_id", sanitize(mapperLog.statementId()));
+            fields.put("db_table", sanitize(mapperLog.dbTable()));
+            fields.put("result_size", Math.max(mapperLog.resultSize(), 0));
+            fields.put("sql_fingerprint", sanitize(mapperLog.sqlFingerprint()));
+            return fields;
+        }).toList();
     }
 
     private static Map<String, String> baseFields(String userId, String description) {
