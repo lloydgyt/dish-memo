@@ -1,6 +1,7 @@
 package com.example.dish_memo.suggestion.controller;
 
 import com.example.dish_memo.common.ApiResponse;
+import com.example.dish_memo.common.ApiHeaders;
 import com.example.dish_memo.suggestion.dto.NameSuggestionRequest;
 import com.example.dish_memo.suggestion.dto.NameSuggestionResponse;
 import com.example.dish_memo.suggestion.service.SuggestionService;
@@ -31,13 +32,13 @@ public class SuggestionController {
     /**
      * Suggests a dish name from a temporary object storage image URL.
      *
-     * @param userId current user ID from gateway header
-     * @param request image URL request
+     * @param userId current OpenID from gateway header
+     * @param request file ID request
      * @return name suggestion result
      */
     @PostMapping("/name-suggestions")
     public ApiResponse<NameSuggestionResponse> suggest(
-            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader(ApiHeaders.WX_OPENID) String userId,
             @Valid @RequestBody NameSuggestionRequest request
     ) {
         return ApiResponse.ok(suggestionService.suggest(userId, request));

@@ -101,7 +101,7 @@ public class DishService {
     }
 
     /**
-     * Returns one dish after checking not-found and user ownership semantics.
+     * Returns one dish after applying user-level query isolation.
      *
      * @param userId current user ID
      * @param dishId requested dish ID
@@ -177,11 +177,8 @@ public class DishService {
     }
 
     private DishRecord requireOwnedRecord(String userId, String dishId) {
-        DishRecord record = dishMapper.findById(dishId);
+        DishRecord record = dishMapper.findByIdAndUserId(dishId, userId);
         if (record == null) {
-            throw new BusinessException(ErrorCode.DISH_NOT_FOUND, "dish record not found");
-        }
-        if (!userId.equals(record.getUserId())) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "forbidden to access this dish record");
         }
         return record;

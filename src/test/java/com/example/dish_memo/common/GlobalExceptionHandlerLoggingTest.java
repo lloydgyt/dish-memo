@@ -15,7 +15,7 @@ class GlobalExceptionHandlerLoggingTest {
     void businessExceptionHandlerLogsStructuredWarn(CapturedOutput output) {
         GlobalExceptionHandler handler = new GlobalExceptionHandler();
         MockHttpServletRequest request = new MockHttpServletRequest();
-        request.addHeader("X-User-Id", "u_1");
+        request.addHeader(ApiHeaders.WX_OPENID, "u_1");
 
         handler.handleBusinessException(
                 new BusinessException(ErrorCode.PARAM_ERROR, "parameter is invalid"),

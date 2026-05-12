@@ -6,7 +6,7 @@ Spring Boot 后端服务，提供个人菜品记录 CRUD、基于阿里云百炼
 
 | 模块 | 职责 |
 |---|---|
-| `common` | 统一响应、错误码、业务异常、全局异常处理、`X-User-Id` 校验。 |
+| `common` | 统一响应、错误码、业务异常、全局异常处理、`X-WX-OPENID` 校验、结构化请求日志和 SQL trace 注释。 |
 | `dish` | 菜品新增、列表、详情、编辑、删除、用户隔离和 MyBatis 数据访问。 |
 | `suggestion` | 基于对象存储临时 `image_url` 调用阿里云百炼 `qwen3.6-flash` 生成菜名建议。 |
 | `recommendation` | 按餐别随机返回不重复历史菜品候选。 |
@@ -24,8 +24,10 @@ http://localhost:8080/api/v1
 所有业务接口都需要 Header：
 
 ```text
-X-User-Id: <current-user-id>
+X-WX-OPENID: <current-user-openid>
 ```
+
+服务端严格以 `X-WX-OPENID` 作为 `dish_record.user_id` 的数据路由依据。菜品查询、详情、编辑、删除和推荐候选查询都会在数据库访问前注入当前 OpenID 过滤条件；旧的 `X-User-Id` 不再作为身份来源。
 
 当前实现的接口：
 
@@ -130,10 +132,14 @@ mvn spring-boot:run
 
 ## 日志
 
-日志配置文件为 [src/main/resources/logback.xml](/home/lloydgyt/dish-memo/src/main/resources/logback.xml)。`/api/v1/**` 请求在 Controller 入口由拦截器统一输出一条 JSON 结构化请求日志：
+日志配置文件为 [src/main/resources/logback.xml](/home/lloydgyt/dish-memo/src/main/resources/logback.xml)。`/api/v1/**` 请求由 Servlet Filter 统一输出一条 JSON 结构化请求日志，`duration_ms` 覆盖从进入 Filter 到退出 Filter 前的完整耗时，因此包括 MVC 前置拦截失败的请求路径：
 
-- 请求日志字段固定包含 `request_id`、`user_id`、`request_params`、`method`、`path`、`status`、`duration_ms`。
+- summary log 字段固定包含 `request_id`、`user_id`、`request_params`、`route`、`status`、`duration_ms`、`db_duration_ms`。
 - `request_id` 优先读取 `X-Request-Id`，缺失时自动生成 UUID。
-- `user_id` 读取 `X-User-Id`，缺失时记录为 `UNKNOWN`。
+- `user_id` 读取 `X-WX-OPENID`，缺失时记录为 `UNKNOWN`。
+- `route` 格式为 `请求方法 请求路径`，例如 `GET /api/v1/dishes`。
+- `db_duration_ms` 来自 MyBatis Mapper 执行耗时累计。
 - `request_params` 会在输出前脱敏，命中 `password`、`token`、`authorization`、`access_token`、`refresh_token` 等敏感参数名时值固定为 `[REDACTED]`。
+- 当请求总耗时大于 `dish-memo.logging.slow-request-threshold-ms`（默认 `500`）时，会额外输出一条阶段详情 JSON 日志，字段包含 `request_id`、`controller_ms`、`service_ms` 和 `mapper` 数组；每个 `mapper` 元素包含 `duration_ms`、`statement_id`、`db_table`、`result_size`、`sql_fingerprint`。Controller、Service、Mapper 耗时分别由 Spring AOP 和 MyBatis 拦截器记录，多个 Mapper 调用会按执行顺序全部输出。
+- MyBatis 核心 `SELECT`、`INSERT`、`UPDATE`、`DELETE` SQL 在执行前会自动追加 `/* request_id: {value} */` 注释；`sql_fingerprint` 会移除该 trace 注释后再输出。
 - `GlobalExceptionHandler` 的异常分支仍输出 `WARN` 结构化日志，包含 `userId`、`description`、`exceptionType` 和已脱敏的 `exceptionMessage`。

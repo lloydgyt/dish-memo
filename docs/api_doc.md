@@ -26,10 +26,10 @@
 
 | Header | 类型 | 必填 | 说明 |
 |---|---|---:|---|
-| `X-User-Id` | string | 是 | 当前登录用户 ID，由网关注入 |
 | `X-Request-Id` | string | 否 | 请求链路追踪 ID |
+| `X-WX-OPENID` | string | 是 | 微信 openid（作为后续操作的 user_id），生产环境下由微信云托管注入，开发环境下由前端注入 |
 
-> 服务端以 `X-User-Id` 作为数据隔离依据，任何查询、编辑、删除、推荐操作均仅作用于当前用户自己的菜品数据。
+> 服务端以 `X-WX-OPENID` 作为数据隔离依据，任何查询、编辑、删除、推荐操作均仅作用于当前用户自己的菜品数据。
 
 ### 2.2 通用响应结构
 
@@ -128,6 +128,81 @@ dish-memo:
       base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
       model: qwen3.6-flash
 ```
+
+### 2.7  日志格式
+
+#### summary log
+
+- 所有的 request 都对应一个 summary log
+
+JSON 格式
+
+|     字段名     |                             说明                             |
+| :------------: | :----------------------------------------------------------: |
+|   request_id   |                   记录同一个请求链路的 id                    |
+|    user_id     |                   用户 ID - 实质是 openid                    |
+| request_params |                         请求时的参数                         |
+|     route      |                     请求方法 与 请求路径                     |
+|     status     |                       该请求的响应状态                       |
+|  duration_ms   | 请求持续时间，以 ms 为单位。记录的是从进入 Filter 开始到退出 Filter 前之间的总时间 |
+| db_duration_ms |        记录的是进入 Mapper 到退出 Mapper 之间的总时间        |
+
+示例
+
+``` json
+{
+    "request_id":"req_1778054141288_lsh1v551",
+    "user_id":"o3kVk3YbeZT5cfD51vikUZM1LcOU",
+    "request_params":{
+            "page_no":"1",
+        	"page_size":"20",
+        	"meal_type":"lunch"
+    },
+	"route": "GET /api/v1/dishes",
+    "status":200,
+    "duration_ms":8,
+	"db_duration_ms": 31
+}
+```
+
+#### 详细阶段 log
+
+1. 详细阶段 log 仅当 request 的 duration_ms 大于阈值的时候记录
+
+JSON 格式
+
+|         字段名         |                     说明                     |
+| :--------------------: | :------------------------------------------: |
+|       request_id       |           记录同一个请求链路的 id            |
+|     controller_ms      |              controller 层耗时               |
+|       service_ms       |               service 层的耗时               |
+|         mapper         | 一个数组，调用 n 个mapper，便有 n 个数组元素 |
+|   mapper.duration_ms   |               mapper 层的耗时                |
+|  mapper.statement_id   |              指明哪一个 Mapper               |
+|    mapper.db_table     |   数据库名及表名（格式如“数据库名:表名”）    |
+|   mapper.result_size   |         mapper层最终映射后的对象数量         |
+| mapper.sql_fingerprint |     SQL fingerprint 需要去掉 trace 注释      |
+
+示例
+
+```json
+{
+    "request_id":"req_1778054141288_lsh1v551",
+	"controller_ms": 20,
+    "service_ms": 30,
+    "mapper": [
+		{
+             "duration_ms": 500,
+             "statement_id": "com.example.mapper.OrderMapper.selectById",
+             "db_table": "dish_memo:dish_record",
+             "result_size": 20,
+			"sql_fingerprint": "SELECT * FROM orders WHERE id = ?"    
+		},
+    ]
+}
+```
+
+
 
 ---
 
