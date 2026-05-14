@@ -56,11 +56,11 @@
 
 ### 2.4 数据库表结构
 
-#### DishRecord（目前只有一个表）
+#### DishRecord
 
 | 字段名 | 类型 | 说明 |
 |---|---|---|
-| id | string | 菜品记录 ID |
+| id | string | 菜品记录 ID（主键） |
 | user_id | string | 用户 ID |
 | name | string | 菜品名称 |
 | file_id | string | 菜品图片在对象存储中的文件 ID |
@@ -69,6 +69,36 @@
 | meal_type | string | 餐别，取值 breakfast, lunch, dinner |
 | created_at | string | 创建时间，RFC3339 |
 | updated_at | string | 更新时间，RFC3339 |
+
+#### User
+
+| 字段名 | 类型 | 说明 |
+|---|---|---|
+| uid | string | 用户主键，唯一标识一个业务用户 |
+| nickname | string | 用户昵称 |
+| avatar_url | string/null | 用户头像地址 |
+| created_at | string | 创建时间，RFC3339 |
+| updated_at | string | 更新时间，RFC3339 |
+
+#### FriendRelation
+
+| 字段名 | 类型 | 说明 |
+|---|---|---|
+| uid_a | string | 好友关系中排序后较小的一侧 uid |
+| uid_b | string | 好友关系中排序后较大的一侧 uid |
+| created_at | string | 建立好友关系时间，RFC3339 |
+
+> 索引约束：建立 `(uid_a, uid_b)` 联合唯一索引。写入前服务端需先将两个 uid 归一化排序，避免同一好友关系出现双向重复记录。
+
+#### FriendInvitation
+
+| 字段名 | 类型 | 说明 |
+|---|---|---|
+| inviter_uid | string | 已发送好友请求的用户 uid |
+| expire_at | string | 邀请过期时间，RFC3339 |
+| created_at | string | 创建时间，RFC3339 |
+
+> 索引约束：建议对 `inviter_uid` 建索引。服务端确认添加好友前需先解析 `inviteToken` 得到 A 的 uid，再检查 `FriendInvitation` 是否存在 A 的有效好友请求记录。
 
 ### 2.5 图片存储约定
 
@@ -167,7 +197,7 @@ JSON 格式
 
 #### 详细阶段 log
 
-1. 详细阶段 log 仅当 request 的 duration_ms 大于阈值的时候记录
+1. 详细阶段 log 仅当 request 的 duration_ms 大于阈值（默认 500ms）的时候记录
 
 JSON 格式
 
@@ -217,6 +247,13 @@ JSON 格式
 | 4041001 | 404 | 菜品记录不存在 | 检查记录 ID |
 | 4091001 | 409 | 状态冲突 | 根据当前状态调整流程 |
 | 4221001 | 422 | LLM 菜名生成失败 | 允许用户手动填写 |
+| 4002001 | 400 | uid 缺失或非法 | 检查登录态与请求参数 |
+| 4002002 | 400 | 不允许添加自己为好友 | 终止当前操作 |
+| 4042001 | 404 | 好友请求不存在 | 检查 inviteToken 或重新发起好友请求 |
+| 4092001 | 409 | 好友关系已存在 | 按已添加状态展示 |
+| 4092002 | 409 | 好友请求状态冲突 | 刷新页面并重新确认状态 |
+| 4102001 | 410 | inviteToken 已过期 | 重新生成 inviteToken |
+| 4222001 | 422 | inviteToken 签名非法或内容被篡改 | 拒绝处理并提示重新打开有效 token |
 | 5001001 | 500 | 服务内部异常 | 必要时重试 |
 | 5001002 | 500 | 对象存储访问失败 | 必要时重试 |
 
@@ -243,18 +280,25 @@ JSON 格式
 | 4.5 | 编辑菜品记录 | `PUT` | `/dishes/{dish_id}` |
 | 4.6 | 删除菜品记录 | `DELETE` | `/dishes/{dish_id}` |
 | 4.7 | “今天吃什么”推荐 | `GET` | `/recommendations/today-meals` |
+| 4.8 | 接受好友 | `POST` | `/friends/invitations` |
+| 4.9 | 解析并校验 inviteToken | `POST` | `/friends/invitations/parse` |
+| 4.10 | 查询邀请是否可用 | `GET` | `/friends/invitations/{inviteToken}` |
+| 4.11 | 确认添加好友 | `POST` | `/friends` |
+| 4.12 | 查询好友列表 | `GET` | `/friends` |
 
 ---
 
 ## 5. 详细接口定义
 
-## 5.1 基于图片生成菜名建议
+### 5.1 菜品模块
+
+#### 5.1.1 基于图片生成菜名建议
 
 - **方法**：`POST`
 - **路径**：`/dishes/name-suggestions`
 - **说明**：根据前端已上传到对象存储的图片临时 URL 调用阿里云百炼 `qwen3.6-flash` 多模态模型，生成 1 个菜名建议；失败时前端应允许用户手动填写。
 
-### 请求参数
+##### 请求参数
 
 - 参数格式——`application/json`
 
@@ -262,15 +306,15 @@ JSON 格式
 |---|---|---:|---|---|
 | image_url | string | 是 | 对象存储文件的临时 URL | 仅允许 `https`，域名必须命中服务端白名单 |
 
-### 请求示例
+##### 请求示例
 
 ```json
 {
-  "image_url": "https://oss.example.com/temp/dish_01.jpg"
+  "image_url": "https://7072-prod-d5gdc5h99b1442a27-1424479475.tcb.qcloud.la/production/dish/local-user/img_1777367830994_ci4nbo3l.jpg?sign=79eda24322761d1500ea8247f5a4afc2&t=1778555502"
 }
 ```
 
-### 响应参数
+##### 响应参数
 
 | 字段名 | 类型 | 说明 |
 |---|---|---|
@@ -278,7 +322,7 @@ JSON 格式
 | model_status | string | `success` / `failed` |
 | reason | string/null | 失败原因摘要 |
 
-### 成功响应示例
+##### 成功响应示例
 
 ```json
 {
@@ -292,7 +336,7 @@ JSON 格式
 }
 ```
 
-### 降级响应示例
+##### 降级响应示例
 
 ```json
 {
@@ -306,7 +350,7 @@ JSON 格式
 }
 ```
 
-### 失败场景
+##### 失败场景
 
 | 场景 | HTTP 状态码 | 业务码 | 说明 |
 |---|---:|---:|---|
@@ -319,13 +363,13 @@ JSON 格式
 
 ---
 
-## 5.2 新增菜品记录
+#### 5.1.2 新增菜品记录
 
 - **方法**：`POST`
 - **路径**：`/dishes`
 - **说明**：创建一条菜品记录。名称、图片、日期、餐别为必填。
 
-### 请求参数
+##### 请求参数
 
 - 参数格式——`application/json`
 
@@ -337,7 +381,7 @@ JSON 格式
 | date | string | 是 | 日期 | `2026-04-18` |
 | meal_type | string | 是 | 餐别 | `breakfast/lunch/dinner` |
 
-### 请求示例
+##### 请求示例
 
 ```json
 {
@@ -349,7 +393,7 @@ JSON 格式
 }
 ```
 
-### 响应参数
+##### 响应参数
 
 | 字段名 | 类型 | 说明 |
 |---|---|---|
@@ -361,7 +405,7 @@ JSON 格式
 | meal_type | string | 餐别 |
 | created_at | string | 创建时间 |
 
-### 成功响应示例
+##### 成功响应示例
 
 ```json
 {
@@ -379,7 +423,7 @@ JSON 格式
 }
 ```
 
-### 失败场景
+##### 失败场景
 
 | 场景 | HTTP 状态码 | 业务码 | 说明 |
 |---|---:|---:|---|
@@ -390,13 +434,13 @@ JSON 格式
 
 ---
 
-## 5.3 菜品列表查询
+#### 5.1.3 菜品列表查询
 
 - **方法**：`GET`
 - **路径**：`/dishes`
 - **说明**：分页查询当前用户的历史菜品记录，支持按餐别、日期区间、关键字筛选。
 
-### 请求参数
+##### 请求参数
 
 - 参数格式——`query`
 
@@ -409,13 +453,13 @@ JSON 格式
 | date_to | string | 否 | 结束日期 | `2026-04-30` |
 | keyword | string | 否 | 菜名关键字 | 最长 50 字符 |
 
-### 请求示例
+##### 请求示例
 
 ```http
 GET /api/v1/dishes?page_no=1&page_size=20&meal_type=dinner&keyword=番茄
 ```
 
-### 响应参数
+##### 响应参数
 
 | 字段名 | 类型 | 说明 |
 |---|---|---|
@@ -424,7 +468,7 @@ GET /api/v1/dishes?page_no=1&page_size=20&meal_type=dinner&keyword=番茄
 | page_no | integer | 当前页码 |
 | page_size | integer | 每页数量 |
 
-#### list 元素字段
+###### list 元素字段
 
 | 字段名 | 类型 | 说明 |
 |---|---|---|
@@ -435,7 +479,7 @@ GET /api/v1/dishes?page_no=1&page_size=20&meal_type=dinner&keyword=番茄
 | meal_type | string | 餐别 |
 | updated_at | string | 更新时间 |
 
-### 成功响应示例
+##### 成功响应示例
 
 ```json
 {
@@ -459,7 +503,7 @@ GET /api/v1/dishes?page_no=1&page_size=20&meal_type=dinner&keyword=番茄
 }
 ```
 
-### 失败场景
+##### 失败场景
 
 | 场景 | HTTP 状态码 | 业务码 | 说明 |
 |---|---:|---:|---|
@@ -469,25 +513,25 @@ GET /api/v1/dishes?page_no=1&page_size=20&meal_type=dinner&keyword=番茄
 
 ---
 
-## 5.4 菜品详情查询
+#### 5.1.4 菜品详情查询
 
 - **方法**：`GET`
 - **路径**：`/dishes/{dish_id}`
 - **说明**：查询某条菜品记录完整信息。
 
-### 路径参数
+##### 路径参数
 
 | 参数名 | 类型 | 必填 | 说明 | 约束/示例 |
 |---|---|---:|---|---|
 | dish_id | string | 是 | 菜品记录 ID | `dish_01JABCXYZ` |
 
-### 请求示例
+##### 请求示例
 
 ```http
 GET /api/v1/dishes/dish_01JABCXYZ
 ```
 
-### 响应参数
+##### 响应参数
 
 | 字段名 | 类型 | 说明 |
 |---|---|---|
@@ -500,7 +544,7 @@ GET /api/v1/dishes/dish_01JABCXYZ
 | created_at | string | 创建时间 |
 | updated_at | string | 更新时间 |
 
-### 成功响应示例
+##### 成功响应示例
 
 ```json
 {
@@ -519,7 +563,7 @@ GET /api/v1/dishes/dish_01JABCXYZ
 }
 ```
 
-### 失败场景
+##### 失败场景
 
 | 场景 | HTTP 状态码 | 业务码 | 说明 |
 |---|---:|---:|---|
@@ -528,19 +572,19 @@ GET /api/v1/dishes/dish_01JABCXYZ
 
 ---
 
-## 5.5 编辑菜品记录
+#### 5.1.5 编辑菜品记录
 
 - **方法**：`PUT`
 - **路径**：`/dishes/{dish_id}`
 - **说明**：更新菜品信息。名称、图片、日期、餐别更新后立即对列表、详情、推荐生效。
 
-### 路径参数
+##### 路径参数
 
 | 参数名 | 类型 | 必填 | 说明 | 约束/示例 |
 |---|---|---:|---|---|
 | dish_id | string | 是 | 菜品记录 ID | `dish_01JABCXYZ` |
 
-### 请求参数
+##### 请求参数
 
 - 参数格式——`application/json`
 
@@ -552,7 +596,7 @@ GET /api/v1/dishes/dish_01JABCXYZ
 | date | string | 是 | 日期 | `2026-04-18` |
 | meal_type | string | 是 | 餐别 | `breakfast/lunch/dinner` |
 
-### 请求示例
+##### 请求示例
 
 ```json
 {
@@ -564,7 +608,7 @@ GET /api/v1/dishes/dish_01JABCXYZ
 }
 ```
 
-### 响应参数
+##### 响应参数
 
 | 字段名 | 类型 | 说明 |
 |---|---|---|
@@ -576,7 +620,7 @@ GET /api/v1/dishes/dish_01JABCXYZ
 | meal_type | string | 最新餐别 |
 | updated_at | string | 更新时间 |
 
-### 成功响应示例
+##### 成功响应示例
 
 ```json
 {
@@ -594,7 +638,7 @@ GET /api/v1/dishes/dish_01JABCXYZ
 }
 ```
 
-### 失败场景
+##### 失败场景
 
 | 场景 | HTTP 状态码 | 业务码 | 说明 |
 |---|---:|---:|---|
@@ -606,31 +650,31 @@ GET /api/v1/dishes/dish_01JABCXYZ
 
 ---
 
-## 5.6 删除菜品记录
+#### 5.1.6 删除菜品记录
 
 - **方法**：`DELETE`
 - **路径**：`/dishes/{dish_id}`
 - **说明**：删除指定菜品记录。
 
-### 路径参数
+##### 路径参数
 
 | 参数名 | 类型 | 必填 | 说明 | 约束/示例 |
 |---|---|---:|---|---|
 | dish_id | string | 是 | 菜品记录 ID | `dish_01JABCXYZ` |
 
-### 请求示例
+##### 请求示例
 
 ```http
 DELETE /api/v1/dishes/dish_01JABCXYZ
 ```
 
-### 响应参数
+##### 响应参数
 
 | 字段名 | 类型 | 说明 |
 |---|---|---|
 | success | boolean | 是否删除成功 |
 
-### 成功响应示例
+##### 成功响应示例
 
 ```json
 {
@@ -642,7 +686,7 @@ DELETE /api/v1/dishes/dish_01JABCXYZ
 }
 ```
 
-### 失败场景
+##### 失败场景
 
 | 场景 | HTTP 状态码 | 业务码 | 说明 |
 |---|---:|---:|---|
@@ -651,13 +695,13 @@ DELETE /api/v1/dishes/dish_01JABCXYZ
 
 ---
 
-## 5.7 “今天吃什么”推荐
+#### 5.1.7 “今天吃什么”推荐
 
 - **方法**：`GET`
 - **路径**：`/recommendations/today-meals`
 - **说明**：根据用户选择的餐别，从该用户历史同餐别记录中随机抽取候选菜品。默认返回 3 个，不重复；不足则返回全部。
 
-### 请求参数
+##### 请求参数
 
 - 参数格式——`query`
 
@@ -667,13 +711,13 @@ DELETE /api/v1/dishes/dish_01JABCXYZ
 | size | integer | 否 | 候选数量 | 默认 `3`，最大 `10` |
 | refresh_token | string | 否 | 换一批标识 | 前端可传随机串，便于追踪一次刷新 |
 
-### 请求示例
+##### 请求示例
 
 ```http
 GET /api/v1/recommendations/today-meals?meal_type=breakfast&size=3&refresh_token=r_20260418_01
 ```
 
-### 响应参数
+##### 响应参数
 
 | 字段名 | 类型 | 说明 |
 |---|---|---|
@@ -684,7 +728,7 @@ GET /api/v1/recommendations/today-meals?meal_type=breakfast&size=3&refresh_token
 | empty_tip | string/null | 空状态提示 |
 | list | array<object> | 候选菜品列表 |
 
-#### list 元素字段
+###### list 元素字段
 
 | 字段名 | 类型 | 说明 |
 |---|---|---|
@@ -694,7 +738,7 @@ GET /api/v1/recommendations/today-meals?meal_type=breakfast&size=3&refresh_token
 | date | string | 历史日期 |
 | meal_type | string | 餐别 |
 
-### 成功响应示例（有数据）
+##### 成功响应示例（有数据）
 
 ```json
 {
@@ -733,7 +777,7 @@ GET /api/v1/recommendations/today-meals?meal_type=breakfast&size=3&refresh_token
 }
 ```
 
-### 成功响应示例（空状态）
+##### 成功响应示例（空状态）
 
 ```json
 {
@@ -750,13 +794,251 @@ GET /api/v1/recommendations/today-meals?meal_type=breakfast&size=3&refresh_token
 }
 ```
 
-### 失败场景
+##### 失败场景
 
 | 场景 | HTTP 状态码 | 业务码 | 说明 |
 |---|---:|---:|---|
 | meal_type 缺失 | 400 | 4001001 | 必须指定餐别 |
 | meal_type 非法 | 400 | 4001001 | 餐别不在枚举范围内 |
 | size 非法 | 400 | 4001001 | 数量必须大于 0 |
+
+---
+
+### 5.2 好友模块
+
+#### 5.2.1 邀请添加好友
+
+- **方法**：`POST`
+- **路径**：`/friends/invitations`
+- **鉴权 Header**：`X-WX-OPENID` 必填，服务端据此解析当前登录 uid
+- **说明**：A 邀请添加好友后，服务端将 A 的 uid 写入 `FriendInvitation`，并生成包含 A 的 uid、nickname 以及 avatar_url（这些信息服务端查询用户表可得到）、具备签名防篡改能力的 `inviteToken`。该记录表示 A 确实发送过好友请求，供 B 后续确认添加好友时校验。
+
+##### 请求参数
+
+| 字段名 | 类型 | 必填 | 说明 |
+|---|---|---:|---|
+| expire_in_seconds | integer | 否 | 邀请有效期，默认 `86400`，服务端可配置上限 |
+
+##### 请求示例
+
+```json
+{
+  "expire_in_seconds": 86400
+}
+```
+
+##### 响应参数
+
+| 字段名 | 类型 | 说明 |
+|---|---|---|
+| inviteToken | string | 包含 A uid 信息的好友邀请 token |
+| expire_at | string | 过期时间，RFC3339 |
+
+##### 成功响应示例
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "inviteToken": "fit_eyJ1aWQiOiJ1XzEwMDEiLCJleHAiOjE3Nzg3MzM2MDB9.ab12cd34",
+    "expire_at": "2026-05-14T10:00:00+08:00"
+  }
+}
+```
+
+##### 失败场景
+
+| 场景 | HTTP 状态码 | 业务码 | 说明 |
+|---|---:|---:|---|
+| 当前登录 uid 为空或非法 | 400 | 4002001 | 拒绝生成 inviteToken |
+| expire_in_seconds 非法 | 400 | 4001001 | 有效期必须为正整数并满足服务端限制 |
+
+---
+
+#### 5.2.2 解析 inviteToken
+
+- **方法**：`POST`
+- **路径**：`/friends/invitations/parse`
+- **鉴权 Header**：`X-WX-OPENID` 必填
+- **说明**：解析前端收到的 `inviteToken`，校验签名有效性、是否过期，并返回 A 的 nickname 和 avatar_url。该接口只做校验与解析，不建立好友关系。用于了解是谁发起的好友请求
+
+##### 请求参数
+
+| 字段名 | 类型 | 必填 | 说明 |
+|---|---|---:|---|
+| inviteToken | string | 是 | A 发送给 B 的好友邀请 token |
+
+##### 请求示例
+
+```json
+{
+  "inviteToken": "fit_eyJ1aWQiOiJ1XzEwMDEiLCJleHAiOjE3Nzg3MzM2MDB9.ab12cd34"
+}
+```
+
+##### 响应参数
+
+| 字段名 | 类型 | 说明 |
+|---|---|---|
+| nickname | string | inviteToken 中包含的邀请者的昵称 |
+| avatar_url | string | inviteToken 中包含的邀请者的头像 url |
+
+##### 成功响应示例
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+	"nickname" : "YT",
+    "avatar_url": "https://oss.example.com/random1434"
+  }
+}
+```
+
+##### 失败场景
+
+| 场景 | HTTP 状态码 | 业务码 | 说明 |
+|---|---:|---:|---|
+| 当前登录 uid 为空或非法 | 400 | 4002001 | 拒绝解析 |
+| inviteToken 缺失或格式非法 | 400 | 4001001 | 无法提取必要参数 |
+| inviteToken 签名非法或内容被篡改 | 422 | 4222001 | token 不可信 |
+
+---
+
+#### 5.2.3 确认添加好友
+
+- **方法**：`POST`
+- **路径**：`/friends`
+- **鉴权 Header**：`X-WX-OPENID` 必填
+- **说明**：B 确认“添加 A 为好友”。服务端先解析 `inviteToken` 得到 A 的 uid，再检查 `FriendInvitation` 中是否存在 A 的有效好友请求记录，确认 A 确实发送过好友请求；校验通过后在同一事务内将 A/B uid 写入 `FriendRelation`。
+
+##### 请求参数
+
+| 字段名 | 类型 | 必填 | 说明 |
+|---|---|---:|---|
+| inviteToken | string | 是 | A 发送给 B 的好友邀请 token |
+
+##### 请求示例
+
+```json
+{
+  "inviteToken": "fit_eyJ1aWQiOiJ1XzEwMDEiLCJleHAiOjE3Nzg3MzM2MDB9.ab12cd34"
+}
+```
+
+##### 响应参数
+
+| 字段名 | 类型 | 说明 |
+|---|---|---|
+| inviter_uid | string | 发起好友邀请方（A）的 uid |
+| friend_uid | string | 当前接收方（B）的 uid |
+
+##### 成功响应示例
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "inviter_uid": "u_1001",
+    "friend_uid": "u_2002",
+  }
+}
+```
+
+##### 失败场景
+
+| 场景 | HTTP 状态码 | 业务码 | 说明 |
+|---|---:|---:|---|
+| 当前登录 uid 为空或非法 | 400 | 4002001 | 拒绝处理 |
+| inviteToken 缺失 | 400 | 4001001 | 必须提供 inviteToken |
+| 好友请求不存在 | 404 | 4042001 | `FriendInvitation` 中不存在 A 的有效好友请求记录 |
+| 接收方与邀请发起方相同 | 400 | 4002002 | 不允许自添加 |
+| 好友关系已存在且非同一次幂等重试 | 409 | 4092001 | 不重复创建关系 |
+| 邀请已过期 | 410 | 4102001 | 不允许继续使用 |
+| inviteToken 签名非法或内容被篡改 | 422 | 4222001 | token 不可信 |
+
+---
+
+#### 5.2.4 查询好友列表
+
+- **方法**：`GET`
+- **路径**：`/friends`
+- **鉴权 Header**：`X-WX-OPENID` 必填
+- **说明**：按当前登录 uid 关联查询好友关系表，并补充用户基础信息。支持分页和 nickname 过滤。
+
+##### 请求参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+|---|---|---:|---|
+| page_no | integer | 否 | 页码，默认 `1` |
+| page_size | integer | 否 | 每页数量，默认 `20` |
+| nickname_keyword | string | 否 | 按好友昵称模糊过滤 |
+
+##### 请求示例
+
+```text
+GET /api/v1/friends?page_no=1&page_size=20&nickname_keyword=阿青
+```
+
+##### 响应参数
+
+| 字段名 | 类型 | 说明 |
+|---|---|---|
+| page_no | integer | 当前页码 |
+| page_size | integer | 当前分页大小 |
+| total | integer | 总条数 |
+| list | array | 好友列表 |
+
+###### list 元素字段
+
+| 字段名 | 类型 | 说明 |
+|---|---|---|
+| uid | string | 好友 uid |
+| nickname | string | 好友昵称 |
+| avatar_url | string/null | 好友头像地址 |
+| created_at | string | 建立好友关系时间，RFC3339 |
+
+##### 成功响应示例
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "page_no": 1,
+    "page_size": 20,
+    "total": 1,
+    "list": [
+      {
+        "uid": "u_1001",
+        "nickname": "阿青",
+        "avatar_url": null,
+        "created_at": "2026-05-13T10:10:00+08:00"
+      }
+    ]
+  }
+}
+```
+
+##### 失败场景
+
+| 场景 | HTTP 状态码 | 业务码 | 说明 |
+|---|---:|---:|---|
+| 当前登录 uid 为空或非法 | 400 | 4002001 | 拒绝查询 |
+| page_no 或 page_size 非法 | 400 | 4001001 | 分页参数需满足正整数约束 |
+
+---
+
+## 6. 好友模块统一业务规则
+
+- 所有好友模块接口均要求登录，并以 `X-WX-OPENID` 解析出的当前 uid 作为可信身份来源。
+- 接受好友时，服务端需将 A 的 `uid`、`expire_at` 等字段纳入 `inviteToken` 签名校验范围，并在 `FriendInvitation` 中保留 A 的有效好友请求记录。
+- 查询邀请可用性时，服务端需拒绝 uid 为空、接收方 uid 非法、自添加、好友关系已存在、好友请求不存在、`inviteToken` 过期等情况。
+- 确认添加好友时，应先解析 `inviteToken` 得到 A 的 uid，再检查 `FriendInvitation` 是否存在 A 的有效好友请求记录；通过后在单一数据库事务中插入好友关系记录。
+- 对 `inviteToken` 伪造、过期等异常，统一降级为标准业务码返回，不暴露内部签名细节或存储实现。
 
 ---
 
@@ -770,5 +1052,6 @@ GET /api/v1/recommendations/today-meals?meal_type=breakfast&size=3&refresh_token
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v1.2.0 | 2026-05-13 | 新增好友邀请、邀请解析、好友确认、好友列表接口定义，并补充用户表、好友关系表、邀请表及相关错误码与边界规则 |
 | v1.1.0 | 2026-04-28 | 图片上传改为前端直传对象存储；后端仅存储并返回 `file_id`，不再提供图片上传接口或返回 `image_url` |
 | v1.0.0 | 2026-04-18 | 根据 MVP PRD 产出首版接口文档与请求链路流程图 |

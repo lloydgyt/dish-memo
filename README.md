@@ -1,6 +1,6 @@
 # cook-history-service
 
-Spring Boot 后端服务，提供个人菜品记录 CRUD、基于阿里云百炼多模态模型的菜名建议和“今天吃什么”随机推荐能力。接口版本为 `v1.1.0`，详细契约见 [docs/api_doc.md](/home/lloydgyt/dish-memo/docs/api_doc.md)。
+Spring Boot 后端服务，提供个人菜品记录 CRUD、基于阿里云百炼多模态模型的菜名建议、“今天吃什么”随机推荐能力，以及好友邀请和好友列表接口。接口版本为 `v1.2.0`，详细契约见 [docs/api_doc.md](/home/lloydgyt/dish-memo/docs/api_doc.md)。
 
 ## 模块
 
@@ -10,6 +10,7 @@ Spring Boot 后端服务，提供个人菜品记录 CRUD、基于阿里云百炼
 | `dish` | 菜品新增、列表、详情、编辑、删除、用户隔离和 MyBatis 数据访问。 |
 | `suggestion` | 基于对象存储临时 `image_url` 与 `prompt` 调用阿里云百炼 `qwen3.6-flash` 生成菜名建议。 |
 | `recommendation` | 按餐别随机返回不重复历史菜品候选。 |
+| `friend` | 好友邀请 token 生成/解析、确认添加好友、好友列表查询；当前使用内存 mock repository，启动和接口测试不依赖物理数据库连接。 |
 
 后端不再提供图片上传接口，菜品记录也不保存或返回 `image_url`。图片由前端直传对象存储，新增/编辑菜品记录时后端仅保存并返回对象存储 `file_id`；生成菜名建议时前端传入对象存储临时 `image_url` 供模型识别。
 
@@ -40,10 +41,16 @@ X-WX-OPENID: <current-user-openid>
 | `PUT` | `/dishes/{dish_id}` | 编辑菜品记录。 |
 | `DELETE` | `/dishes/{dish_id}` | 删除菜品记录。 |
 | `GET` | `/recommendations/today-meals` | 获取“今天吃什么”推荐。 |
+| `POST` | `/friends/invitations` | 创建好友邀请 token。 |
+| `POST` | `/friends/invitations/parse` | 解析并校验好友邀请 token。 |
+| `POST` | `/friends` | 确认添加好友。 |
+| `GET` | `/friends` | 分页查询好友列表。 |
 
 ## 数据库
 
 建库建表脚本位于 [src/main/resources/db/schema.sql](/home/lloydgyt/dish-memo/src/main/resources/db/schema.sql)。
+
+接口文档对应的完整标准 DDL 位于 [docs/table_ddl/schema.sql](/home/lloydgyt/dish-memo/docs/table_ddl/schema.sql)，包含 `dish_record`、`user`、`friend_relation`、`friend_invitation`。该文件不在应用启动流程中自动执行；项目当前未配置 `spring.sql.init`、Flyway 或 Liquibase 自动建表。
 
 初始化：
 
@@ -51,7 +58,7 @@ X-WX-OPENID: <current-user-openid>
 mysql -uroot -p < src/main/resources/db/schema.sql
 ```
 
-核心表 `dish_record` 字段与 API 文档一致，图片字段为 `file_id`：
+运行时 MyBatis 使用的核心表 `dish_record` 字段与 API 文档一致，图片字段为 `file_id`：
 
 ```sql
 CREATE TABLE IF NOT EXISTS dish_record (
@@ -92,6 +99,8 @@ export SUGGESTION_IMAGE_URL_ALLOWED_HOSTS='oss.example.com,img.example.com,7072-
 ```
 
 Jackson 已配置为 `SNAKE_CASE`，API JSON 字段使用 `image_url`、`suggested_name`、`model_status`、`file_id`、`meal_type`、`created_at`、`updated_at`、`page_no`、`page_size`、`requested_size`、`actual_size`、`is_empty`、`empty_tip` 等文档格式。
+
+好友模块新增错误码包括 `4002001`、`4002002`、`4042001`、`4092001`、`4092002`、`4102001`、`4222001`。`inviteToken` 按文档保持 camelCase，其他复合字段按全局 `SNAKE_CASE` 输出，例如 `expire_at`、`inviter_uid`、`friend_uid`、`avatar_url`。
 
 `/dishes/name-suggestions` 请求体：
 
