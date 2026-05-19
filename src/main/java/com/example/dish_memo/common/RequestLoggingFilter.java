@@ -12,7 +12,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.UUID;
 
 /**
  * Emits sanitized JSON access logs for versioned API requests from the servlet filter boundary.
@@ -20,7 +19,6 @@ import java.util.UUID;
 @Component
 public class RequestLoggingFilter extends OncePerRequestFilter {
     private static final Logger LOGGER = LoggerFactory.getLogger(RequestLoggingFilter.class);
-    private static final String REQUEST_ID_HEADER = "X-Request-Id";
     private static final String API_PATH_PREFIX = "/api/v1/";
 
     private final long slowRequestThresholdMs;
@@ -53,6 +51,10 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
         long startTimeNanos = System.nanoTime();
         String requestId = requestId(request);
+        if (!StringUtils.hasText(requestId)) {
+            writeMissingRequestIdResponse(response);
+            return;
+        }
         RequestLogContext.start(requestId, request.getHeader(ApiHeaders.WX_OPENID));
         try {
             filterChain.doFilter(request, response);
@@ -101,8 +103,13 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
     }
 
     private String requestId(HttpServletRequest request) {
-        String requestId = request.getHeader(REQUEST_ID_HEADER);
-        return StringUtils.hasText(requestId) ? requestId : UUID.randomUUID().toString();
+        return request.getHeader(ApiHeaders.REQUEST_ID);
+    }
+
+    private void writeMissingRequestIdResponse(HttpServletResponse response) throws IOException {
+        response.setStatus(ErrorCode.PARAM_ERROR.status().value());
+        response.setContentType("application/json;charset=UTF-8");
+        response.getWriter().write("{\"code\":4001001,\"message\":\"X-Request-Id is required\",\"data\":null}");
     }
 
     private long durationMs(long startTimeNanos) {

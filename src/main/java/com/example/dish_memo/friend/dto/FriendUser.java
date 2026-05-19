@@ -7,9 +7,9 @@ import java.time.OffsetDateTime;
  *
  * @param uid user ID
  * @param nickname display nickname
- * @param avatarUrl avatar URL or null
+ * @param avatarFileId avatar file ID or null
  * @param createdAt creation time
  * @param updatedAt update time
  */
-public record FriendUser(String uid, String nickname, String avatarUrl, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+public record FriendUser(String uid, String nickname, String avatarFileId, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
 }

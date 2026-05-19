@@ -26,7 +26,7 @@
 
 | Header | 类型 | 必填 | 说明 |
 |---|---|---:|---|
-| `X-Request-Id` | string | 否 | 请求链路追踪 ID |
+| `X-Request-Id` | string | 是 | 请求链路追踪 ID |
 | `X-WX-OPENID` | string | 是 | 微信 openid（作为后续操作的 user_id），生产环境下由微信云托管注入，开发环境下由前端注入 |
 
 > 服务端以 `X-WX-OPENID` 作为数据隔离依据，任何查询、编辑、删除、推荐操作均仅作用于当前用户自己的菜品数据。
@@ -76,7 +76,7 @@
 |---|---|---|
 | uid | string | 用户主键，唯一标识一个业务用户 |
 | nickname | string | 用户昵称 |
-| avatar_url | string/null | 用户头像地址 |
+| avatar_file_id | string/null | 用户头像在对象存储中的文件 ID |
 | created_at | string | 创建时间，RFC3339 |
 | updated_at | string | 更新时间，RFC3339 |
 
@@ -111,9 +111,9 @@
 | development | `development/` | 开发环境上传图片 |
 | production | `production/` | 生产环境上传图片 |
 
-前端上传完成后，将对象存储返回的 `fileID` 作为后端 API 中的 `file_id` 提交。该 `file_id` 必须是前端可直接用于从对象存储下载或展示图片的文件 ID。
+前端上传完成后，将对象存储返回的 `fileID` 作为后端 API 中的 `file_id` (或`avatar_file_id`) 提交。该 `file_id`(或`avatar_file_id`) 必须是前端可直接用于从对象存储下载或展示图片的文件 ID。
 
-对象存储路径格式：
+菜品图片对象存储路径格式：
 
 ```text
 {environment}/dish/{user_id}/{file_name}
@@ -126,7 +126,22 @@ production/dish/u_1001/img_01HRXYZ.jpg
 development/dish/u_1001/img_01HRXYZ.jpg
 ```
 
+用户头像对象存储路径格式：
+
+```text
+{environment}/avatar/{user_id}/{file_name}
+```
+
+示例：
+
+```text
+production/avatar/u_1001/avatar_01HRXYZ.jpg
+development/avatar/u_1001/avatar_01HRXYZ.jpg
+```
+
 > 说明：若对象存储 SDK 返回完整 `cloud://.../production/...` 或类似格式，应将完整值作为 `file_id` 传给后端。后端可对 `file_id` 做非空、格式、当前运行环境前缀校验，以及必要的用户归属校验；后端响应中不返回 `image_url`，也不负责拼接图片访问 URL。
+
+- `user_id` 就是 `X-WX-OPENID`
 
 ### 2.6 外部配置
 
@@ -250,10 +265,14 @@ JSON 格式
 | 4002001 | 400 | uid 缺失或非法 | 检查登录态与请求参数 |
 | 4002002 | 400 | 不允许添加自己为好友 | 终止当前操作 |
 | 4042001 | 404 | 好友请求不存在 | 检查 inviteToken 或重新发起好友请求 |
+| 4042002 | 404 | 当前用户不存在 | 重新登录或检查用户状态 |
 | 4092001 | 409 | 好友关系已存在 | 按已添加状态展示 |
 | 4092002 | 409 | 好友请求状态冲突 | 刷新页面并重新确认状态 |
 | 4102001 | 410 | inviteToken 已过期 | 重新生成 inviteToken |
 | 4222001 | 422 | inviteToken 签名非法或内容被篡改 | 拒绝处理并提示重新打开有效 token |
+| 4003001 | 400 | 用户信息参数错误 | 修正用户昵称或头像文件 ID 后重试 |
+| 4043001 | 404 | 用户不存在 | 引导用户先创建用户信息 |
+| 4093001 | 409 | 用户已存在 | 按已有用户信息处理或改为更新流程 |
 | 5001001 | 500 | 服务内部异常 | 必要时重试 |
 | 5001002 | 500 | 对象存储访问失败 | 必要时重试 |
 
@@ -280,11 +299,13 @@ JSON 格式
 | 4.5 | 编辑菜品记录 | `PUT` | `/dishes/{dish_id}` |
 | 4.6 | 删除菜品记录 | `DELETE` | `/dishes/{dish_id}` |
 | 4.7 | “今天吃什么”推荐 | `GET` | `/recommendations/today-meals` |
-| 4.8 | 接受好友 | `POST` | `/friends/invitations` |
+| 4.8 | 邀请添加好友 | `POST` | `/friends/invitations` |
 | 4.9 | 解析并校验 inviteToken | `POST` | `/friends/invitations/parse` |
-| 4.10 | 查询邀请是否可用 | `GET` | `/friends/invitations/{inviteToken}` |
-| 4.11 | 确认添加好友 | `POST` | `/friends` |
-| 4.12 | 查询好友列表 | `GET` | `/friends` |
+| 4.10 | 确认添加好友 | `POST` | `/friends` |
+| 4.11 | 查询好友列表 | `GET` | `/friends` |
+| 4.12 | 查询好友今日饮食 | `GET` | `/friends/today-dishes` |
+| 4.13 | 创建用户 | `POST` | `/users` |
+| 4.14 | 查询当前用户信息 | `GET` | `/users` |
 
 ---
 
@@ -811,7 +832,7 @@ GET /api/v1/recommendations/today-meals?meal_type=breakfast&size=3&refresh_token
 - **方法**：`POST`
 - **路径**：`/friends/invitations`
 - **鉴权 Header**：`X-WX-OPENID` 必填，服务端据此解析当前登录 uid
-- **说明**：A 邀请添加好友后，服务端将 A 的 uid 写入 `FriendInvitation`，并生成包含 A 的 uid、nickname 以及 avatar_url（这些信息服务端查询用户表可得到）、具备签名防篡改能力的 `inviteToken`。该记录表示 A 确实发送过好友请求，供 B 后续确认添加好友时校验。
+- **说明**：A 邀请添加好友后，服务端将 A 的 uid 写入 `FriendInvitation`，并生成包含 A 的 uid、nickname 以及 `avatar_file_id`（这些信息服务端查询 `User` 表可得到）、具备签名防篡改能力的 `inviteToken`。该记录表示 A 确实发送过好友请求，供 B 后续确认添加好友时校验。
 
 ##### 请求参数
 
@@ -861,7 +882,7 @@ GET /api/v1/recommendations/today-meals?meal_type=breakfast&size=3&refresh_token
 - **方法**：`POST`
 - **路径**：`/friends/invitations/parse`
 - **鉴权 Header**：`X-WX-OPENID` 必填
-- **说明**：解析前端收到的 `inviteToken`，校验签名有效性、是否过期，并返回 A 的 nickname 和 avatar_url。该接口只做校验与解析，不建立好友关系。用于了解是谁发起的好友请求
+- **说明**：解析前端收到的 `inviteToken`，并返回 A 的 nickname 和 `avatar_file_id`。该接口只做校验与解析，不建立好友关系。用于了解是谁发起的好友请求。前端展示头像时通过微信云存储能力将 `avatar_file_id` 转为可展示地址。
 
 ##### 请求参数
 
@@ -882,7 +903,7 @@ GET /api/v1/recommendations/today-meals?meal_type=breakfast&size=3&refresh_token
 | 字段名 | 类型 | 说明 |
 |---|---|---|
 | nickname | string | inviteToken 中包含的邀请者的昵称 |
-| avatar_url | string | inviteToken 中包含的邀请者的头像 url |
+| avatar_file_id | string/null | inviteToken 中包含的邀请者头像文件 ID |
 
 ##### 成功响应示例
 
@@ -891,8 +912,8 @@ GET /api/v1/recommendations/today-meals?meal_type=breakfast&size=3&refresh_token
   "code": 0,
   "message": "ok",
   "data": {
-	"nickname" : "YT",
-    "avatar_url": "https://oss.example.com/random1434"
+    "nickname" : "YT",
+    "avatar_file_id": "production/avatar/u_1001/avatar_01HRXYZ.jpg"
   }
 }
 ```
@@ -943,7 +964,7 @@ GET /api/v1/recommendations/today-meals?meal_type=breakfast&size=3&refresh_token
   "message": "ok",
   "data": {
     "inviter_uid": "u_1001",
-    "friend_uid": "u_2002",
+    "friend_uid": "u_2002"
   }
 }
 ```
@@ -998,7 +1019,7 @@ GET /api/v1/friends?page_no=1&page_size=20&nickname_keyword=阿青
 |---|---|---|
 | uid | string | 好友 uid |
 | nickname | string | 好友昵称 |
-| avatar_url | string/null | 好友头像地址 |
+| avatar_file_id | string/null | 好友头像文件 ID |
 | created_at | string | 建立好友关系时间，RFC3339 |
 
 ##### 成功响应示例
@@ -1015,7 +1036,7 @@ GET /api/v1/friends?page_no=1&page_size=20&nickname_keyword=阿青
       {
         "uid": "u_1001",
         "nickname": "阿青",
-        "avatar_url": null,
+        "avatar_file_id": null,
         "created_at": "2026-05-13T10:10:00+08:00"
       }
     ]
@@ -1032,19 +1053,269 @@ GET /api/v1/friends?page_no=1&page_size=20&nickname_keyword=阿青
 
 ---
 
-## 6. 好友模块统一业务规则
+#### 5.2.5 查询好友今日饮食
+
+- **方法**：`GET`
+- **路径**：`/friends/today-dishes`
+- **鉴权 Header**：`X-WX-OPENID` 必填
+- **说明**：查询当前登录用户好友在服务端今日指定餐别下记录的菜品，用于“朋友们吃什么”动态列表。服务端先从 `FriendRelation` 获取好友 uid 列表，再批量查询 `DishRecord`。
+
+##### 请求参数
+
+- 参数格式——`query`
+
+| 参数名 | 类型 | 必填 | 说明 | 约束/示例 |
+|---|---|---:|---|---|
+| meal_type | string | 是 | 餐别 | `breakfast/lunch/dinner` |
+| page_no | integer | 否 | 页码 | 默认 `1` |
+| page_size | integer | 否 | 每页数量 | 默认 `20`，最大 `100` |
+
+##### 请求示例
+
+```http
+GET /api/v1/friends/today-dishes?meal_type=lunch&page_no=1&page_size=20
+```
+
+##### 查询逻辑
+
+1. 从 `X-WX-OPENID` 解析当前登录 uid；若 uid 缺失或非法，返回 `4002001`。
+2. 校验当前 uid 对应用户是否存在；若无法解析到有效用户，返回 `4042002`。
+3. 查询 `FriendRelation`，匹配 `uid_a = 当前 uid OR uid_b = 当前 uid`，并取关系另一侧作为好友 uid 列表。
+4. 按服务端时区计算今日时间边界，严格限定为当日 `00:00:00` 至 `23:59:59`。
+5. 批量查询 `DishRecord`，条件为 `user_id IN 好友 uid 列表`、`meal_type = 入参餐别`、`date = 服务端今日日期`。若实现改用时间字段过滤，必须保证记录时间落在服务端今日 `00:00:00` 至 `23:59:59` 闭区间内。
+6. 关联 `User` 表补充好友昵称和 `avatar_file_id`，按记录创建时间倒序返回，并必须使用分页限制返回数量。
+
+##### 响应参数
+
+| 字段名 | 类型 | 说明 |
+|---|---|---|
+| page_no | integer | 当前页码 |
+| page_size | integer | 当前分页大小 |
+| total | integer | 总条数 |
+| is_empty | boolean | 是否为空 |
+| list | array<object> | 好友今日菜品列表 |
+
+###### list 元素字段
+
+| 字段名 | 类型 | 说明 |
+|---|---|---|
+| friend_uid | string | 好友 uid |
+| friend_avatar_file_id | string/null | 好友头像文件 ID |
+| friend_nickname | string | 好友昵称 |
+| dish_id | string | 菜品记录 ID |
+| dish_name | string | 菜品名称 |
+| dish_file_id | string | 菜品图片文件 ID |
+| meal_type | string | 餐别 |
+| date | string | 服务端今日日期，格式 `YYYY-MM-DD` |
+
+##### 成功响应示例（有数据）
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "page_no": 1,
+    "page_size": 20,
+    "total": 2,
+    "is_empty": false,
+    "list": [
+      {
+        "friend_uid": "u_1001",
+        "friend_avatar_file_id": "production/avatar/u_1001/avatar_01HRXYZ.jpg",
+        "friend_nickname": "阿青",
+        "dish_id": "dish_01JABCXYZ",
+        "dish_name": "番茄炒蛋",
+        "dish_file_id": "production/dish/u_1001/img_01HRXYZ.jpg",
+        "meal_type": "lunch",
+        "date": "2026-05-14"
+      },
+      {
+        "friend_uid": "u_2002",
+        "friend_avatar_file_id": null,
+        "friend_nickname": "小林",
+        "dish_id": "dish_01JDEFXYZ",
+        "dish_name": "青椒肉丝",
+        "dish_file_id": "production/dish/u_2002/img_01JDEFXYZ.jpg",
+        "meal_type": "lunch",
+        "date": "2026-05-14"
+      }
+    ]
+  }
+}
+```
+
+##### 成功响应示例（空状态）
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "page_no": 1,
+    "page_size": 20,
+    "total": 0,
+    "is_empty": true,
+    "list": []
+  }
+}
+```
+
+##### 失败场景
+
+| 场景 | HTTP 状态码 | 业务码 | 说明 |
+|---|---:|---:|---|
+| 当前登录 uid 为空或非法 | 400 | 4002001 | 拒绝查询 |
+| 当前用户不存在 | 404 | 4042002 | 无法解析当前 uid 对应用户 |
+| meal_type 缺失或非法 | 400 | 4001001 | 餐别必须为 `breakfast/lunch/dinner` |
+| page_no 或 page_size 非法 | 400 | 4001001 | 分页参数需满足正整数约束，且 `page_size` 不超过 `100` |
+
+> 空结果规则：当前 uid 有效但无好友，或好友今日指定餐别无菜品记录时，返回标准空对象，`total=0`、`is_empty=true`、`list=[]`，不返回错误码。
+
+---
+
+### 5.3 用户信息模块
+
+#### 5.3.1 创建用户
+
+- **方法**：`POST`
+- **路径**：`/users`
+- **鉴权 Header**：`X-WX-OPENID` 必填，服务端据此解析当前登录 uid
+- **说明**：创建当前登录用户的基础信息。前端不传 `uid`，服务端以 `X-WX-OPENID` 作为 `User.uid` 持久化，并保存昵称与头像文件 ID。头像文件由小程序前端调用微信云存储上传，后端不接收头像文件、不保存头像 URL。
+
+##### 请求参数
+
+- 参数格式——`application/json`
+
+| 参数名 | 类型 | 必填 | 说明 | 约束/示例 |
+|---|---|---:|---|---|
+| nickname | string | 是 | 用户昵称 | 1~50 字符，去除首尾空白后不可为空 |
+| avatar_file_id | string/null | 否 | 用户头像文件 ID | 可为 `null` 或空字符串；非空时必须来自微信云存储返回的 `fileID`，并满足当前运行环境前缀约束 |
+
+##### 请求示例
+
+```json
+{
+  "nickname": "阿青",
+  "avatar_file_id": "production/avatar/u_1001/avatar_01HRXYZ.jpg"
+}
+```
+
+##### 处理逻辑
+
+1. 从 `X-WX-OPENID` 解析当前登录 uid；若 uid 缺失或非法，返回 `4002001`。
+2. 校验 `nickname` 必填且长度合法，校验 `avatar_file_id` 非空时为合法对象存储文件 ID，并满足当前运行环境前缀；失败返回 `4003001`。
+3. 查询 `User` 表是否已存在当前 uid；若已存在，返回 `4093001`。
+4. 写入 `User.uid`、`nickname`、`avatar_file_id`、`created_at`、`updated_at`。
+5. 返回标准创建成功响应，仅包含可供前端展示的用户基础字段。
+
+##### 响应参数
+
+| 字段名 | 类型 | 说明 |
+|---|---|---|
+| nickname | string | 用户昵称 |
+| avatar_file_id | string/null | 用户头像文件 ID |
+| created_at | string | 创建时间，RFC3339 |
+
+##### 成功响应示例
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "nickname": "阿青",
+    "avatar_file_id": "production/avatar/u_1001/avatar_01HRXYZ.jpg",
+    "created_at": "2026-05-14T10:20:00+08:00"
+  }
+}
+```
+
+##### 失败场景
+
+| 场景 | HTTP 状态码 | 业务码 | 说明 |
+|---|---:|---:|---|
+| 当前登录 uid 为空或非法 | 400 | 4002001 | 拒绝创建 |
+| nickname 缺失或为空 | 400 | 4003001 | 昵称必填 |
+| nickname 超长 | 400 | 4003001 | 昵称长度不能超过服务端限制 |
+| avatar_file_id 格式非法 | 400 | 4003001 | 头像文件 ID 必须为合法对象存储文件 ID |
+| 当前 uid 已存在用户记录 | 409 | 4093001 | 不重复创建用户 |
+
+---
+
+#### 5.3.2 查询当前用户信息
+
+- **方法**：`GET`
+- **路径**：`/users`
+- **鉴权 Header**：`X-WX-OPENID` 必填，服务端据此解析当前登录 uid
+- **说明**：查询当前登录用户的基础信息。前端不传 `uid`，服务端只按 `X-WX-OPENID` 查询 `User` 表，并且响应只返回 `nickname` 与 `avatar_file_id`。前端展示头像时通过微信云存储能力将 `avatar_file_id` 转为可展示地址。
+
+##### 请求参数
+
+无。
+
+##### 请求示例
+
+```http
+GET /api/v1/users
+```
+
+##### 查询逻辑
+
+1. 从 `X-WX-OPENID` 解析当前登录 uid；若 uid 缺失或非法，返回 `4002001`。
+2. 使用当前 uid 查询 `User` 表；若不存在，返回 `4043001`。
+3. 仅反序列化并返回 `nickname` 与 `avatar_file_id`，不得返回 `uid`、`created_at`、`updated_at` 或好友关系等内部字段。
+4. 不接受客户端传入目标 uid，因此不存在跨 uid 查询入口；若实现层收到额外 uid 参数，也必须忽略或拒绝。
+
+##### 响应参数
+
+| 字段名 | 类型 | 说明 |
+|---|---|---|
+| nickname | string | 用户昵称 |
+| avatar_file_id | string/null | 用户头像文件 ID |
+
+##### 成功响应示例
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "nickname": "阿青",
+    "avatar_file_id": "production/avatar/u_1001/avatar_01HRXYZ.jpg"
+  }
+}
+```
+
+##### 失败场景
+
+| 场景 | HTTP 状态码 | 业务码 | 说明 |
+|---|---:|---:|---|
+| 当前登录 uid 为空或非法 | 400 | 4002001 | 拒绝查询 |
+| 当前用户不存在 | 404 | 4043001 | `User` 表不存在当前 uid |
+| 请求试图指定其他 uid | 403 | 4031001 | 服务端不得允许查询他人用户信息 |
+
+---
+
+## 6. 用户模块统一业务规则
+
+- 用户信息模块接口均要求登录，并以 `X-WX-OPENID` 解析出的当前 uid 作为唯一可信身份来源。
+- 前端创建或查询用户信息时不传 `uid`；服务端不得信任请求体、query 或路径中出现的 uid。
+- `User.uid` 只用于持久化和内部关联，查询当前用户信息接口只返回 `nickname` 与 `avatar_file_id`。
+- 创建用户时应保证 `uid` 唯一，重复创建返回 `4093001`；如后续需要修改昵称或头像，应另行定义更新接口。
+
+---
+
+## 7. 好友模块统一业务规则
 
 - 所有好友模块接口均要求登录，并以 `X-WX-OPENID` 解析出的当前 uid 作为可信身份来源。
 - 接受好友时，服务端需将 A 的 `uid`、`expire_at` 等字段纳入 `inviteToken` 签名校验范围，并在 `FriendInvitation` 中保留 A 的有效好友请求记录。
 - 查询邀请可用性时，服务端需拒绝 uid 为空、接收方 uid 非法、自添加、好友关系已存在、好友请求不存在、`inviteToken` 过期等情况。
 - 确认添加好友时，应先解析 `inviteToken` 得到 A 的 uid，再检查 `FriendInvitation` 是否存在 A 的有效好友请求记录；通过后在单一数据库事务中插入好友关系记录。
+- 查询好友今日饮食时，只能返回当前 uid 的好友数据；服务端必须先通过 `FriendRelation` 获取好友 uid 列表，再批量查询 `DishRecord`，不得允许客户端直接指定好友 uid 绕过关系校验。
+- 好友今日饮食的时间范围以服务端时区为准，严格限定为当日 `00:00:00` 至 `23:59:59`；若当前 uid 有效但无好友或无今日菜品记录，应返回标准空对象。
+- 好友今日饮食必须分页返回，`page_no` 默认 `1`，`page_size` 默认 `20`，最大 `100`，避免一次性返回过多好友菜品记录。
 - 对 `inviteToken` 伪造、过期等异常，统一降级为标准业务码返回，不暴露内部签名细节或存储实现。
-
----
-
-## 7. 其他
-
-- `X-Request-Id` 贯穿网关、服务、LLM 调用链路
 
 ---
 
@@ -1052,6 +1323,9 @@ GET /api/v1/friends?page_no=1&page_size=20&nickname_keyword=阿青
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v1.4.1 | 2026-05-14 | 用户头像存储字段由头像 URL 调整为 `avatar_file_id`，用户、好友和邀请相关接口统一返回头像文件 ID，并补充头像对象存储路径约定 |
+| v1.4.0 | 2026-05-14 | 新增用户信息模块，定义创建用户与查询当前用户信息接口，明确用户 uid 仅来自 `X-WX-OPENID`，补充用户模块错误码与业务规则 |
+| v1.3.0 | 2026-05-14 | 新增查询好友今日饮食接口定义，补充好友菜品批量查询、服务端今日时间边界、分页、空结果及当前用户不存在错误码 |
 | v1.2.0 | 2026-05-13 | 新增好友邀请、邀请解析、好友确认、好友列表接口定义，并补充用户表、好友关系表、邀请表及相关错误码与边界规则 |
 | v1.1.0 | 2026-04-28 | 图片上传改为前端直传对象存储；后端仅存储并返回 `file_id`，不再提供图片上传接口或返回 `image_url` |
 | v1.0.0 | 2026-04-18 | 根据 MVP PRD 产出首版接口文档与请求链路流程图 |

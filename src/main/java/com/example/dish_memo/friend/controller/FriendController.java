@@ -7,6 +7,7 @@ import com.example.dish_memo.friend.dto.CreateFriendInvitationRequest;
 import com.example.dish_memo.friend.dto.CreateFriendInvitationResponse;
 import com.example.dish_memo.friend.dto.FriendInviteTokenRequest;
 import com.example.dish_memo.friend.dto.FriendPageResponse;
+import com.example.dish_memo.friend.dto.FriendTodayDishesResponse;
 import com.example.dish_memo.friend.dto.ParseFriendInvitationResponse;
 import com.example.dish_memo.friend.service.FriendService;
 import jakarta.validation.Valid;
@@ -97,5 +98,24 @@ public class FriendController {
             @RequestParam(name = "nickname_keyword", required = false) String nicknameKeyword
     ) {
         return ApiResponse.ok(friendService.listFriends(userId, pageNo, pageSize, nicknameKeyword));
+    }
+
+    /**
+     * Lists dishes recorded today by current user's friends.
+     *
+     * @param userId current OpenID from gateway header
+     * @param mealType requested meal type
+     * @param pageNo page number
+     * @param pageSize page size
+     * @return paginated friend today dishes
+     */
+    @GetMapping("/today-dishes")
+    public ApiResponse<FriendTodayDishesResponse> listTodayDishes(
+            @RequestHeader(ApiHeaders.WX_OPENID) String userId,
+            @RequestParam(name = "meal_type") String mealType,
+            @RequestParam(name = "page_no", defaultValue = "1") int pageNo,
+            @RequestParam(name = "page_size", defaultValue = "20") int pageSize
+    ) {
+        return ApiResponse.ok(friendService.listTodayDishes(userId, mealType, pageNo, pageSize));
     }
 }

@@ -7,8 +7,8 @@ import java.time.OffsetDateTime;
  *
  * @param uid friend user ID
  * @param nickname friend nickname
- * @param avatarUrl friend avatar URL or null
+ * @param avatarFileId friend avatar file ID or null
  * @param createdAt relationship creation time
  */
-public record FriendListItemResponse(String uid, String nickname, String avatarUrl, OffsetDateTime createdAt) {
+public record FriendListItemResponse(String uid, String nickname, String avatarFileId, OffsetDateTime createdAt) {
 }
