@@ -76,6 +76,7 @@ class ApiContractTest {
                 .thenReturn(new NameSuggestionResponse("番茄炒蛋", "success", null));
 
         mockMvc.perform(post("/api/v1/dishes/name-suggestions")
+                        .header(ApiHeaders.REQUEST_ID, "req_name_suggestion")
                         .header(ApiHeaders.WX_OPENID, USER_ID)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{"
@@ -90,6 +91,7 @@ class ApiContractTest {
     @Test
     void nameSuggestionRejectsMissingImageUrlWithDocumentedError() throws Exception {
         mockMvc.perform(post("/api/v1/dishes/name-suggestions")
+                        .header(ApiHeaders.REQUEST_ID, "req_name_suggestion_bad")
                         .header(ApiHeaders.WX_OPENID, USER_ID)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
@@ -105,6 +107,7 @@ class ApiContractTest {
         ));
 
         mockMvc.perform(post("/api/v1/dishes")
+                        .header(ApiHeaders.REQUEST_ID, "req_create_dish")
                         .header(ApiHeaders.WX_OPENID, USER_ID)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{"
@@ -133,6 +136,7 @@ class ApiContractTest {
                 ));
 
         mockMvc.perform(get("/api/v1/dishes")
+                        .header(ApiHeaders.REQUEST_ID, "req_list_dish")
                         .header(ApiHeaders.WX_OPENID, USER_ID)
                         .param("page_no", "1")
                         .param("page_size", "20")
@@ -153,7 +157,9 @@ class ApiContractTest {
                 "dish_1", "番茄炒蛋", FILE_ID, null, LocalDate.parse("2026-04-18"), "dinner", TIME, TIME
         ));
 
-        mockMvc.perform(get("/api/v1/dishes/dish_1").header(ApiHeaders.WX_OPENID, USER_ID))
+        mockMvc.perform(get("/api/v1/dishes/dish_1")
+                        .header(ApiHeaders.REQUEST_ID, "req_get_dish")
+                        .header(ApiHeaders.WX_OPENID, USER_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.file_id").value(FILE_ID))
                 .andExpect(jsonPath("$.data.created_at").exists())
@@ -167,6 +173,7 @@ class ApiContractTest {
         ));
 
         mockMvc.perform(put("/api/v1/dishes/dish_1")
+                        .header(ApiHeaders.REQUEST_ID, "req_update_dish")
                         .header(ApiHeaders.WX_OPENID, USER_ID)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{"
@@ -185,7 +192,9 @@ class ApiContractTest {
     void deleteDishUsesDocumentedSuccessField() throws Exception {
         when(dishService.delete(USER_ID, "dish_1")).thenReturn(new DeleteDishResponse(true));
 
-        mockMvc.perform(delete("/api/v1/dishes/dish_1").header(ApiHeaders.WX_OPENID, USER_ID))
+        mockMvc.perform(delete("/api/v1/dishes/dish_1")
+                        .header(ApiHeaders.REQUEST_ID, "req_delete_dish")
+                        .header(ApiHeaders.WX_OPENID, USER_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.success").value(true));
     }
@@ -203,6 +212,7 @@ class ApiContractTest {
         ));
 
         mockMvc.perform(get("/api/v1/recommendations/today-meals")
+                        .header(ApiHeaders.REQUEST_ID, "req_today_meals")
                         .header(ApiHeaders.WX_OPENID, USER_ID)
                         .param("meal_type", "breakfast")
                         .param("size", "3")
@@ -214,7 +224,7 @@ class ApiContractTest {
                 .andExpect(jsonPath("$.data.is_empty").value(false))
                 .andExpect(jsonPath("$.data.list[0].file_id").value(FILE_ID));
 
-        assertThat(output).contains("\"request_id\"");
+        assertThat(output).contains("\"request_id\":\"req_today_meals\"");
         assertThat(output).contains("\"user_id\":\"openid_u_1\"");
         assertThat(output).contains("\"request_params\"");
         assertThat(output).contains("\"meal_type\":\"breakfast\"");
@@ -228,18 +238,30 @@ class ApiContractTest {
 
     @Test
     void removedImageUploadEndpointIsNotAvailable() throws Exception {
-        mockMvc.perform(post("/api/v1/files/images").header(ApiHeaders.WX_OPENID, USER_ID))
+        mockMvc.perform(post("/api/v1/files/images")
+                        .header(ApiHeaders.REQUEST_ID, "req_removed_upload")
+                        .header(ApiHeaders.WX_OPENID, USER_ID))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void oldUserIdHeaderIsRejected() throws Exception {
         mockMvc.perform(get("/api/v1/dishes")
+                        .header(ApiHeaders.REQUEST_ID, "req_old_user_header")
                         .header("X-User-Id", USER_ID)
                         .param("page_size", "20"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(4011001))
                 .andExpect(jsonPath("$.message").value("X-WX-OPENID is required"));
+    }
+
+    @Test
+    void apiRequestRequiresRequestIdHeader() throws Exception {
+        mockMvc.perform(get("/api/v1/dishes")
+                        .header(ApiHeaders.WX_OPENID, USER_ID))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(4001001))
+                .andExpect(jsonPath("$.message").value("X-Request-Id is required"));
     }
 
     @Test

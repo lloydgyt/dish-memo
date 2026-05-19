@@ -49,7 +49,7 @@ public final class StructuredLogUtils {
     /**
      * Creates the documented summary log emitted once for every API request.
      *
-     * @param requestId stable request ID from the inbound header or generated UUID
+     * @param requestId stable request ID from the required inbound header
      * @param userId current request user ID
      * @param requestParams sanitized query parameter map
      * @param route HTTP method and request path
@@ -81,7 +81,7 @@ public final class StructuredLogUtils {
     /**
      * Creates the documented detailed phase log for requests that exceed the configured threshold.
      *
-     * @param requestId stable request ID from the inbound header or generated UUID
+     * @param requestId stable request ID from the required inbound header
      * @param controllerMs measured controller/request phase duration
      * @param serviceMs measured service phase duration, or zero when no separate timing is available
      * @param mapperLogs Mapper execution details captured during this request

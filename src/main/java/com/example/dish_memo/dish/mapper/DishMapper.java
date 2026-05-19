@@ -135,4 +135,62 @@ public interface DishMapper {
      */
     @Select("SELECT * FROM dish_record WHERE user_id = #{userId} AND meal_type = #{mealType}")
     List<DishRecord> listByUserIdAndMealType(@Param("userId") String userId, @Param("mealType") String mealType);
+
+    /**
+     * Lists today's dishes for a set of friend user IDs.
+     *
+     * @param userIds friend user IDs
+     * @param mealType requested meal type
+     * @param date server local date
+     * @return matching friend dish records
+     */
+    @Select("""
+            <script>
+            SELECT COUNT(*)
+            FROM dish_record
+            WHERE meal_type = #{mealType}
+              AND date = #{date}
+              AND user_id IN
+              <foreach item="userId" collection="userIds" open="(" separator="," close=")">
+                  #{userId}
+              </foreach>
+            </script>
+            """)
+    long countTodayDishesByUserIds(
+            @Param("userIds") List<String> userIds,
+            @Param("mealType") String mealType,
+            @Param("date") LocalDate date
+    );
+
+    /**
+     * Lists today's dishes for a set of friend user IDs with database pagination.
+     *
+     * @param userIds friend user IDs
+     * @param mealType requested meal type
+     * @param date server local date
+     * @param limit page size
+     * @param offset page offset
+     * @return matching friend dish records
+     */
+    @Select("""
+            <script>
+            SELECT *
+            FROM dish_record
+            WHERE meal_type = #{mealType}
+              AND date = #{date}
+              AND user_id IN
+              <foreach item="userId" collection="userIds" open="(" separator="," close=")">
+                  #{userId}
+              </foreach>
+            ORDER BY created_at DESC, id DESC
+            LIMIT #{limit} OFFSET #{offset}
+            </script>
+            """)
+    List<DishRecord> listTodayDishesByUserIds(
+            @Param("userIds") List<String> userIds,
+            @Param("mealType") String mealType,
+            @Param("date") LocalDate date,
+            @Param("limit") int limit,
+            @Param("offset") int offset
+    );
 }
