@@ -35,7 +35,7 @@ class MixedDishBehaviorUser(DishMemoUser):
             name="GET /recommendations/today-meals",
         )
 
-    @task(2)
+    @task(3)
     def create_dish_for_workflow(self):
         with self.client.post(
             f"{API_PREFIX}/dishes",

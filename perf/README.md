@@ -17,6 +17,7 @@ These scripts target the `/api/v1` dish APIs and use payloads compatible with `d
 ```bash
 locust -f perf/locust_get_dishes_list.py --host http://localhost:8080
 locust -f perf/locust_get_dish_detail.py --host http://localhost:8080
+locust -f perf/locust_post_dish.py --host http://localhost:8080
 locust -f perf/locust_put_dish.py --host http://localhost:8080
 locust -f perf/locust_delete_dish.py --host http://localhost:8080
 locust -f perf/locust_get_today_meals.py --host http://localhost:8080
