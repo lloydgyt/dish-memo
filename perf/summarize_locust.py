@@ -25,33 +25,36 @@ def value(row, *names, default=""):
     return default
 
 
-def summarize(stage_dir, output):
+def collect_rows(stats_file, stage_name, run_name):
     rows = []
-    for stats_file in sorted(stage_dir.glob("*/stats_stats.csv")):
-        run_name = stats_file.parent.name
-        with stats_file.open(newline="", encoding="utf-8") as handle:
-            for row in csv.DictReader(handle):
-                if row.get("Name") in ("Aggregated", "Total"):
-                    continue
-                rows.append({
-                    "stage": stage_dir.name,
-                    "run": run_name,
-                    "request_name": row.get("Name", ""),
-                    "request_count": value(row, "Request Count"),
-                    "failure_count": value(row, "Failure Count"),
-                    "qps": value(row, "Requests/s"),
-                    "avg_ms": value(row, "Average Response Time"),
-                    "p50_ms": value(row, "50%"),
-                    "p95_ms": value(row, "95%"),
-                    "p99_ms": value(row, "99%"),
-                })
+    with stats_file.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            if row.get("Name") in ("Aggregated", "Total"):
+                continue
+            rows.append({
+                "stage": stage_name,
+                "run": run_name,
+                "request_name": row.get("Name", ""),
+                "request_count": value(row, "Request Count"),
+                "failure_count": value(row, "Failure Count"),
+                "qps": value(row, "Requests/s"),
+                "avg_ms": value(row, "Average Response Time"),
+                "p50_ms": value(row, "50%"),
+                "p95_ms": value(row, "95%"),
+                "p99_ms": value(row, "99%"),
+            })
+    return rows
 
+
+def write_rows(rows, output):
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=FIELDS)
         writer.writeheader()
         writer.writerows(rows)
 
+
+def print_rows(rows, output):
     print(f"summary={output}")
     for row in rows:
         print(
@@ -61,12 +64,21 @@ def summarize(stage_dir, output):
         )
 
 
+def summarize_run(run_dir, output, stage, run):
+    stats_file = run_dir / "stats_stats.csv"
+    rows = collect_rows(stats_file, stage, run)
+    write_rows(rows, output)
+    print_rows(rows, output)
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Summarize Locust CSV stats.")
-    parser.add_argument("--stage-dir", required=True)
+    parser = argparse.ArgumentParser(description="Summarize one Locust run CSV stats file.")
+    parser.add_argument("--run-dir", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--stage", required=True)
+    parser.add_argument("--run", required=True)
     args = parser.parse_args()
-    summarize(Path(args.stage_dir), Path(args.output))
+    summarize_run(Path(args.run_dir), Path(args.output), args.stage, args.run)
 
 
 if __name__ == "__main__":

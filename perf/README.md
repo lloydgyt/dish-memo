@@ -92,5 +92,5 @@ Outputs are written under `perf/results/<timestamp>/` by default:
 - `<stage>/<script>/console.log`: Locust console output.
 - `<stage>/<script>/locust.log`: Locust log file.
 - `<stage>/<script>/stats*.csv`: Locust request statistics, failures, and exception CSV files.
-- `<stage>/<script>/report.html`: Locust HTML report.
 - `<stage>/summary.csv` and `<stage>/summary.txt`: consolidated request count, failure count, QPS, average latency, and percentile latency.
+- `<stage>/report.md`: Markdown summary report with test setup, key metrics, and user-filled Bottlenecks/Conclusion sections.

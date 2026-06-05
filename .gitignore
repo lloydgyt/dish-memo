@@ -7,3 +7,5 @@ target/
 
 # codex
 .codex*
+
+perf/results/

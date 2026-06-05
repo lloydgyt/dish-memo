@@ -7,10 +7,11 @@ USER_ID="${LOCUST_USER_ID:-perf_user_001}"
 STAGE="${1:-${STAGE:-smoke}}"
 RESULT_DIR="${RESULT_DIR:-perf/results/$(date +%Y%m%d_%H%M%S)}"
 DATASET_COUNT="${DATASET_COUNT:-1000}"
+COMMIT="${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || printf unknown)}"
 
 SMOKE_USERS="${SMOKE_USERS:-1}"
 SMOKE_SPAWN_RATE="${SMOKE_SPAWN_RATE:-1}"
-SMOKE_RUN_TIME="${SMOKE_RUN_TIME:-30s}"
+SMOKE_RUN_TIME="${SMOKE_RUN_TIME:-5s}"
 
 BASELINE_USERS="${BASELINE_USERS:-5}"
 BASELINE_SPAWN_RATE="${BASELINE_SPAWN_RATE:-1}"
@@ -123,10 +124,16 @@ run_locust_file() {
       --spawn-rate "$spawn_rate" \
       --run-time "$run_time" \
       --csv "$run_dir/stats" \
-      --html "$run_dir/report.html" \
       --logfile "$run_dir/locust.log" \
       --loglevel INFO \
       >"$run_dir/console.log" 2>&1
+
+  python3 perf/summarize_locust.py \
+    --run-dir "$run_dir" \
+    --stage "$stage" \
+    --run "$run_name" \
+    --output "$run_dir/summary.csv" \
+    | tee "$run_dir/summarize.log"
 }
 
 run_locust_stage() {
@@ -148,22 +155,52 @@ run_locust_stage() {
     >"$stage_dir/dataset.log"
 
   log "Running $stage: users=$users spawn_rate=$spawn_rate run_time=$run_time"
+  local summary_files=()
   for entry in "${locust_runs[@]}"; do
+    local run_name="${entry%%:*}"
     run_locust_file \
       "$stage" \
-      "${entry%%:*}" \
+      "$run_name" \
       "${entry#*:}" \
       "$users" \
       "$spawn_rate" \
       "$run_time" \
       "$dataset_file" \
       "$created_ids_file"
+    summary_files+=("$stage_dir/$run_name/summary.csv")
   done
 
-  python3 perf/summarize_locust.py \
-    --stage-dir "$stage_dir" \
-    --output "$stage_dir/summary.csv" \
-    | tee "$stage_dir/summary.txt"
+  local summary_args=()
+  local summary_file
+  for summary_file in "${summary_files[@]}"; do
+    summary_args+=(--summary "$summary_file")
+  done
+  local report_title
+  case "$stage" in
+    smoke)
+      report_title="Smoke Test Summary"
+      ;;
+    baseline)
+      report_title="Baseline Test Summary"
+      ;;
+    target)
+      report_title="Target Test Summary"
+      ;;
+    *)
+      report_title="$stage Test Summary"
+      ;;
+  esac
+  python3 perf/render_report.py \
+    "${summary_args[@]}" \
+    --output "$stage_dir/summary.md" \
+    --title "$report_title" \
+    --host "$HOST" \
+    --users "$users" \
+    --spawn-rate "$spawn_rate" \
+    --run-time "$run_time" \
+    --stage "$stage" \
+    --commit "$COMMIT" \
+    | tee "$stage_dir/summary.log"
 }
 
 case "$STAGE" in
@@ -187,4 +224,6 @@ esac
 
 if [ "$STAGE" != "reachability" ]; then
   log "Finished. Results are under $RESULT_DIR"
+  # remove temporary file
+  rm -rf "$RESULT_DIR/$STAGE/created_dish_ids.txt"
 fi
