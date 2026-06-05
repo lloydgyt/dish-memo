@@ -119,6 +119,8 @@ dish_id_pool = DishIdPool()
 
 
 class DishMemoUser(HttpUser):
+    abstract = True
+
     wait_time = between(
         float(os.getenv("LOCUST_WAIT_MIN", "1")),
         float(os.getenv("LOCUST_WAIT_MAX", "10")),
