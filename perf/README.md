@@ -32,3 +32,56 @@ locust -f perf/locust_mixed_dish_behaviors.py --host http://localhost:8080
 ```
 
 The mixed script creates its own records and then performs list, detail, update, delete, and recommendation requests as one user workflow.
+
+## Automated staged suite
+
+Run reachability checks plus smoke, baseline, and target Locust stages:
+
+```bash
+bash perf/run_perf_suite.sh all
+```
+
+Run one stage only:
+
+```bash
+bash perf/run_perf_suite.sh reachability
+bash perf/run_perf_suite.sh smoke
+bash perf/run_perf_suite.sh baseline
+bash perf/run_perf_suite.sh target
+```
+
+The suite uses `uvx locust` for Locust runs. Every Locust stage runs all single-endpoint scripts and the mixed behavior script.
+
+Common options:
+
+```bash
+HOST=http://localhost:8000 \
+LOCUST_USER_ID=perf_user_001 \
+RESULT_DIR=perf/results/manual_run \
+bash perf/run_perf_suite.sh smoke
+```
+
+Stage defaults:
+
+```bash
+SMOKE_USERS=1 SMOKE_SPAWN_RATE=1 SMOKE_RUN_TIME=30s
+BASELINE_USERS=5 BASELINE_SPAWN_RATE=1 BASELINE_RUN_TIME=2m
+TARGET_USERS=20 TARGET_SPAWN_RATE=5 TARGET_RUN_TIME=5m
+```
+
+Data seeding:
+
+```bash
+SEED_COUNT=20 DELETE_SEED_COUNT=1000 bash perf/run_perf_suite.sh baseline
+```
+
+`DELETE /dishes/{dish_id}` is destructive, so the suite creates a dedicated ID file for each delete test run. Increase `DELETE_SEED_COUNT` for long target tests.
+
+Outputs are written under `perf/results/<timestamp>/` by default:
+
+- `reachability/*.json`: curl response bodies.
+- `reachability/*.status`: curl HTTP status codes.
+- `<stage>/<script>/console.log`: Locust console output.
+- `<stage>/<script>/locust.log`: Locust log file.
+- `<stage>/<script>/stats*.csv`: Locust request statistics, failures, and exception CSV files.
+- `<stage>/<script>/report.html`: Locust HTML report.
