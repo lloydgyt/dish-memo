@@ -6,8 +6,8 @@ from common import (
     API_PREFIX,
     DEFAULT_USER_ID,
     DishMemoUser,
+    dish_payload_pool,
     dish_list_params,
-    random_dish_payload,
     recommendation_params,
     request_headers,
 )
@@ -39,7 +39,7 @@ class MixedDishBehaviorUser(DishMemoUser):
     def create_dish_for_workflow(self):
         with self.client.post(
             f"{API_PREFIX}/dishes",
-            json=random_dish_payload(DEFAULT_USER_ID),
+            json=dish_payload_pool.next(DEFAULT_USER_ID),
             headers=request_headers(DEFAULT_USER_ID),
             name="POST /dishes",
             catch_response=True,
@@ -57,7 +57,7 @@ class MixedDishBehaviorUser(DishMemoUser):
         dish_id = random.choice(self.owned_dish_ids)
         self.client.put(
             f"{API_PREFIX}/dishes/{dish_id}",
-            json=random_dish_payload(DEFAULT_USER_ID),
+            json=dish_payload_pool.next(DEFAULT_USER_ID),
             headers=request_headers(DEFAULT_USER_ID),
             name="PUT /dishes/{dish_id}",
         )

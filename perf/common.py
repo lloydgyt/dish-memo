@@ -1,4 +1,5 @@
 import itertools
+import json
 import os
 import random
 import threading
@@ -49,6 +50,29 @@ def random_dish_payload(user_id=None):
         "date": dish_day.isoformat(),
         "meal_type": meal_type,
     }
+
+
+def _load_payloads_from_env():
+    payload_file = os.getenv("LOCUST_DISH_PAYLOAD_FILE")
+    if not payload_file:
+        return []
+    with open(payload_file, encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle if line.strip()]
+
+
+class DishPayloadPool:
+    def __init__(self):
+        self._payloads = _load_payloads_from_env()
+        self._lock = threading.Lock()
+        self._index = 0
+
+    def next(self, user_id=None):
+        if not self._payloads:
+            return random_dish_payload(user_id)
+        with self._lock:
+            payload = dict(self._payloads[self._index % len(self._payloads)])
+            self._index += 1
+            return payload
 
 
 def dish_list_params():
@@ -116,6 +140,20 @@ class DishIdPool:
 
 
 dish_id_pool = DishIdPool()
+dish_payload_pool = DishPayloadPool()
+
+
+_created_id_lock = threading.Lock()
+
+
+def append_created_dish_id(dish_id):
+    output_file = os.getenv("LOCUST_CREATED_DISH_ID_FILE")
+    if not output_file or not dish_id:
+        return
+    with _created_id_lock:
+        with open(output_file, "a", encoding="utf-8") as handle:
+            handle.write(dish_id)
+            handle.write("\n")
 
 
 class DishMemoUser(HttpUser):

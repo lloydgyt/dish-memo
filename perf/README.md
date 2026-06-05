@@ -35,27 +35,34 @@ The mixed script creates its own records and then performs list, detail, update,
 
 ## Automated staged suite
 
-Run reachability checks plus smoke, baseline, and target Locust stages:
+The recommended flow is:
 
 ```bash
-bash perf/run_perf_suite.sh all
+HOST=http://localhost:8080 bash perf/run_perf_suite.sh reachability
+HOST=http://localhost:8080 bash perf/run_perf_suite.sh smoke
+HOST=http://localhost:8080 bash perf/run_perf_suite.sh baseline
 ```
 
-Run one stage only:
+Start `target` only after reachability, smoke, and baseline results look healthy:
 
 ```bash
-bash perf/run_perf_suite.sh reachability
-bash perf/run_perf_suite.sh smoke
-bash perf/run_perf_suite.sh baseline
-bash perf/run_perf_suite.sh target
+HOST=http://localhost:8080 bash perf/run_perf_suite.sh target
 ```
 
-The suite uses `uvx locust` for Locust runs. Every Locust stage runs all single-endpoint scripts and the mixed behavior script.
+The suite uses `uvx locust` for Locust runs. Every Locust stage runs all single-endpoint scripts and the mixed behavior script in this fixed order:
+
+1. `POST /dishes`
+2. `GET /dishes`
+3. `GET /dishes/{dish_id}`
+4. `GET /recommendations/today-meals`
+5. `PUT /dishes/{dish_id}`
+6. `DELETE /dishes/{dish_id}`
+7. Mixed behavior
 
 Common options:
 
 ```bash
-HOST=http://localhost:8000 \
+HOST=http://localhost:8080 \
 LOCUST_USER_ID=perf_user_001 \
 RESULT_DIR=perf/results/manual_run \
 bash perf/run_perf_suite.sh smoke
@@ -69,19 +76,21 @@ BASELINE_USERS=5 BASELINE_SPAWN_RATE=1 BASELINE_RUN_TIME=2m
 TARGET_USERS=20 TARGET_SPAWN_RATE=5 TARGET_RUN_TIME=5m
 ```
 
-Data seeding:
+Dataset behavior:
 
 ```bash
-SEED_COUNT=20 DELETE_SEED_COUNT=1000 bash perf/run_perf_suite.sh baseline
+DATASET_COUNT=1000 bash perf/run_perf_suite.sh baseline
 ```
 
-`DELETE /dishes/{dish_id}` is destructive, so the suite creates a dedicated ID file for each delete test run. Increase `DELETE_SEED_COUNT` for long target tests.
+For each Locust stage, `perf/generate_dataset.py` creates a deterministic JSONL payload dataset. `locust_post_dish.py` reads from that dataset and writes the created IDs to `created_dish_ids.txt`. Detail, PUT, and DELETE single-endpoint tests then use that intermediate ID file. The mixed behavior script manages its own created ID pool, so its PUT and DELETE operations only touch records that already exist in that workflow.
 
 Outputs are written under `perf/results/<timestamp>/` by default:
 
-- `reachability/*.json`: curl response bodies.
-- `reachability/*.status`: curl HTTP status codes.
+- `reachability`: no output files; stdout prints `REACHABILITY OK` or `REACHABILITY FAILED: ...`.
+- `<stage>/dish_payloads.jsonl`: deterministic payload dataset used by POST/PUT.
+- `<stage>/created_dish_ids.txt`: IDs created by the POST single-endpoint test and reused by detail/PUT/DELETE.
 - `<stage>/<script>/console.log`: Locust console output.
 - `<stage>/<script>/locust.log`: Locust log file.
 - `<stage>/<script>/stats*.csv`: Locust request statistics, failures, and exception CSV files.
 - `<stage>/<script>/report.html`: Locust HTML report.
+- `<stage>/summary.csv` and `<stage>/summary.txt`: consolidated request count, failure count, QPS, average latency, and percentile latency.
