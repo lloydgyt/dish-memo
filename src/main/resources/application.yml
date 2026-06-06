@@ -1,14 +1,29 @@
 server:
   port: ${SERVER_PORT:8080}
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    prometheus:
+      access: unrestricted
+  metrics:
+    tags:
+      application: dish_memo
+
 spring:
   application:
     name: cook-history-service
   datasource:
-    url: jdbc:mysql://${DB_ADDRESS:localhost:3306}/dish_memo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://${DB_ADDRESS:localhost:3306}/${DB_SCHEMA:dish_memo}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 20
+      connection-timeout: 30000
   data:
     redis:
       host: ${REDIS_HOST:localhost}

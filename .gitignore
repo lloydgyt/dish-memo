@@ -1,3 +1,5 @@
+__pycache__/
+
 target/
 
 # logs
@@ -5,3 +7,5 @@ target/
 
 # codex
 .codex*
+
+perf/results/

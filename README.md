@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS dish_record (
 export SERVER_PORT=8080
 export DB_ADDRESS='localhost:3306'
 export DB_USERNAME=root
+export DB_SCHEMA='dish_memo'
 export DB_PASSWORD='your_password'
 export REDIS_HOST=localhost
 export REDIS_PORT=6379
