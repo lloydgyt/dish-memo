@@ -127,14 +127,35 @@ public interface DishMapper {
     );
 
     /**
-     * Lists recommendation candidates for the current user and meal type.
+     * Counts recommendation candidates for the current user and meal type.
      *
      * @param userId current user ID
      * @param mealType requested meal type
+     * @return matching row count
+     */
+    @Select("SELECT COUNT(*) FROM dish_record WHERE user_id = #{userId} AND meal_type = #{mealType}")
+    long countByUserIdAndMealType(@Param("userId") String userId, @Param("mealType") String mealType);
+
+    /**
+     * Lists one fixed-size recommendation candidate page for the current user and meal type.
+     *
+     * @param userId current user ID
+     * @param mealType requested meal type
+     * @param offset page offset
      * @return candidate records
      */
-    @Select("SELECT * FROM dish_record WHERE user_id = #{userId} AND meal_type = #{mealType}")
-    List<DishRecord> listByUserIdAndMealType(@Param("userId") String userId, @Param("mealType") String mealType);
+    @Select("""
+            SELECT *
+            FROM dish_record
+            WHERE user_id = #{userId} AND meal_type = #{mealType}
+            ORDER BY created_at DESC, id DESC
+            LIMIT 100 OFFSET #{offset}
+            """)
+    List<DishRecord> listRecommendationPageByUserIdAndMealType(
+            @Param("userId") String userId,
+            @Param("mealType") String mealType,
+            @Param("offset") int offset
+    );
 
     /**
      * Lists today's dishes for a set of friend user IDs.

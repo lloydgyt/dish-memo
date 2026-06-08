@@ -12,12 +12,15 @@ import org.springframework.stereotype.Service;
 import java.util.Collections;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Business service for random meal recommendations.
  */
 @Service
 public class RecommendationService {
+    private static final int RECOMMENDATION_PAGE_SIZE = 100;
+
     private final DishService dishService;
 
     /**
@@ -42,7 +45,13 @@ public class RecommendationService {
         if (size <= 0 || size > 10) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "size must be between 1 and 10");
         }
-        List<DishRecord> candidates = new ArrayList<>(dishService.listRecommendationCandidates(userId, parsedMealType.name()));
+        long totalCandidates = dishService.countRecommendationCandidates(userId, parsedMealType.name());
+        List<DishRecord> candidates = new ArrayList<>();
+        if (totalCandidates > 0) {
+            int totalPages = (int) Math.ceil((double) totalCandidates / RECOMMENDATION_PAGE_SIZE);
+            int pageNo = ThreadLocalRandom.current().nextInt(totalPages) + 1;
+            candidates.addAll(dishService.listRecommendationCandidatePage(userId, parsedMealType.name(), pageNo));
+        }
         Collections.shuffle(candidates);
         List<RecommendationItemResponse> selected = candidates.stream()
                 .limit(size)

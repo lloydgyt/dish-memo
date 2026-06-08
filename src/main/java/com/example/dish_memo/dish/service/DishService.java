@@ -26,6 +26,7 @@ import java.util.regex.Pattern;
  */
 @Service
 public class DishService {
+    private static final int RECOMMENDATION_PAGE_SIZE = 100;
     private static final Pattern FILE_ID_PATTERN = Pattern.compile(
             "^(cloud://.+|(?:development|production)/dish/[^/\\s]+/[^\\s]+)$"
     );
@@ -141,15 +142,32 @@ public class DishService {
     }
 
     /**
-     * Lists all recommendation candidates for one user and meal type.
+     * Counts recommendation candidates for one user and meal type.
      *
      * @param userId current user ID
      * @param mealType requested meal type
+     * @return candidate count
+     */
+    public long countRecommendationCandidates(String userId, String mealType) {
+        MealType parsedMealType = MealType.from(mealType);
+        return dishMapper.countByUserIdAndMealType(userId, parsedMealType.name());
+    }
+
+    /**
+     * Lists one fixed-size recommendation candidate page for one user and meal type.
+     *
+     * @param userId current user ID
+     * @param mealType requested meal type
+     * @param pageNo requested page number
      * @return candidate dish records
      */
-    public List<DishRecord> listRecommendationCandidates(String userId, String mealType) {
+    public List<DishRecord> listRecommendationCandidatePage(String userId, String mealType, int pageNo) {
         MealType parsedMealType = MealType.from(mealType);
-        return dishMapper.listByUserIdAndMealType(userId, parsedMealType.name());
+        if (pageNo <= 0) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "page_no must be greater than 0");
+        }
+        int offset = (pageNo - 1) * RECOMMENDATION_PAGE_SIZE;
+        return dishMapper.listRecommendationPageByUserIdAndMealType(userId, parsedMealType.name(), offset);
     }
 
     private void fillRecord(DishRecord record, DishRequest request, MealType mealType, LocalDateTime updatedAt) {

@@ -13,8 +13,11 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class RecommendationServiceTest {
@@ -22,7 +25,7 @@ class RecommendationServiceTest {
     @Test
     void todayMealsReturnsEmptyStateWhenNoCandidatesExist() {
         DishService dishService = mock(DishService.class);
-        when(dishService.listRecommendationCandidates("u_1", "breakfast")).thenReturn(List.of());
+        when(dishService.countRecommendationCandidates("u_1", "breakfast")).thenReturn(0L);
         RecommendationService service = new RecommendationService(dishService);
 
         TodayMealsResponse response = service.todayMeals("u_1", "breakfast", 3);
@@ -30,13 +33,14 @@ class RecommendationServiceTest {
         assertThat(response.isEmpty()).isTrue();
         assertThat(response.actualSize()).isZero();
         assertThat(response.emptyTip()).isEqualTo("你还没有记录过这类餐食");
-        verify(dishService).listRecommendationCandidates("u_1", "breakfast");
+        verify(dishService).countRecommendationCandidates("u_1", "breakfast");
     }
 
     @Test
     void todayMealsLimitsSizeWithoutDuplicates() {
         DishService dishService = mock(DishService.class);
-        when(dishService.listRecommendationCandidates("u_1", "dinner")).thenReturn(List.of(
+        when(dishService.countRecommendationCandidates("u_1", "dinner")).thenReturn(4L);
+        when(dishService.listRecommendationCandidatePage("u_1", "dinner", 1)).thenReturn(List.of(
                 record("dish_1"),
                 record("dish_2"),
                 record("dish_3"),
@@ -48,15 +52,38 @@ class RecommendationServiceTest {
 
         assertThat(response.actualSize()).isEqualTo(3);
         assertThat(response.list()).extracting("id").doesNotHaveDuplicates();
+        verify(dishService).listRecommendationCandidatePage("u_1", "dinner", 1);
+    }
+
+    @Test
+    void todayMealsReadsOnlyOneRecommendationPage() {
+        DishService dishService = mock(DishService.class);
+        when(dishService.countRecommendationCandidates("u_1", "dinner")).thenReturn(250L);
+        when(dishService.listRecommendationCandidatePage(eq("u_1"), eq("dinner"), anyInt()))
+                .thenReturn(List.of(
+                        record("dish_1"),
+                        record("dish_2"),
+                        record("dish_3"),
+                        record("dish_4")
+                ));
+        RecommendationService service = new RecommendationService(dishService);
+
+        TodayMealsResponse response = service.todayMeals("u_1", "dinner", 2);
+
+        assertThat(response.actualSize()).isEqualTo(2);
+        verify(dishService).countRecommendationCandidates("u_1", "dinner");
+        verify(dishService).listRecommendationCandidatePage(eq("u_1"), eq("dinner"), anyInt());
     }
 
     @Test
     void todayMealsValidatesSize() {
-        RecommendationService service = new RecommendationService(mock(DishService.class));
+        DishService dishService = mock(DishService.class);
+        RecommendationService service = new RecommendationService(dishService);
 
         assertThatThrownBy(() -> service.todayMeals("u_1", "lunch", 0))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("size");
+        verifyNoInteractions(dishService);
     }
 
     private DishRecord record(String id) {
