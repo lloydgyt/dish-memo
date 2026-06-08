@@ -118,13 +118,17 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleException(Exception ex, HttpServletRequest request) {
-        warn(request, "handle unexpected exception", ex);
+        error(request, "handle unexpected exception", ex);
         return ResponseEntity.status(ErrorCode.INTERNAL_ERROR.status())
                 .body(ApiResponse.error(ErrorCode.INTERNAL_ERROR, "internal server error"));
     }
 
     private void warn(HttpServletRequest request, String description, Exception ex) {
-        LOGGER.warn(StructuredLogUtils.exception(userId(request), description, ex), ex);
+        LOGGER.warn(StructuredLogUtils.exception(userId(request), description, ex));
+    }
+
+    private void error(HttpServletRequest request, String description, Exception ex) {
+        LOGGER.error(StructuredLogUtils.exception(userId(request), description, ex), ex);
     }
 
     private String userId(HttpServletRequest request) {

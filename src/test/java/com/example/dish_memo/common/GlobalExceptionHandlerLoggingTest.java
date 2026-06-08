@@ -30,14 +30,16 @@ class GlobalExceptionHandlerLoggingTest {
     }
 
     @Test
-    void exceptionHandlerUsesUnknownUserWhenHeaderIsMissing(CapturedOutput output) {
+    void exceptionHandlerLogsErrorWithStackTrace(CapturedOutput output) {
         GlobalExceptionHandler handler = new GlobalExceptionHandler();
 
-        handler.handleException(new RuntimeException("token=secret-token"), new MockHttpServletRequest());
+        handler.handleException(new RuntimeException("unexpected failure"), new MockHttpServletRequest());
 
+        assertThat(output).contains("ERROR");
         assertThat(output).contains("\"userId\":\"UNKNOWN\"");
         assertThat(output).contains("\"description\":\"handle unexpected exception\"");
-        assertThat(output).contains("token=[REDACTED]");
-        assertThat(output).doesNotContain("secret-token");
+        assertThat(output).contains("\"exceptionMessage\":\"unexpected failure\"");
+        assertThat(output).contains("java.lang.RuntimeException: unexpected failure");
+        assertThat(output).contains("at com.example.dish_memo.common.GlobalExceptionHandlerLoggingTest");
     }
 }
