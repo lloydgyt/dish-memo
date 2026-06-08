@@ -5,6 +5,7 @@ HOST_IP='47.94.9.240'
 HOST="${HOST:-http://${HOST_IP}:8080}"
 API_PREFIX="${LOCUST_API_PREFIX:-/api/v1}"
 USER_ID="${LOCUST_USER_ID:-perf_user_001}"
+USER_ID_PREFIX="${LOCUST_USER_ID_PREFIX:-perf_user}"
 PHASE="${1:-${PHASE:-smoke}}"
 TEST="${2:-${TEST:-suite}}"
 RUN_ID="${RUN_ID:-$(date +%Y%m%d_%H%M%S)}"
@@ -32,19 +33,19 @@ MYSQL_DATABASE="${MYSQL_DATABASE:-dish_memo}"
 SMOKE_USERS="${SMOKE_USERS:-10}"
 SMOKE_SPAWN_RATE="${SMOKE_SPAWN_RATE:-1}"
 SMOKE_RUN_TIME="${SMOKE_RUN_TIME:-10s}"
-SMOKE_PREPARE_ROW_COUNT="${SMOKE_PREPARE_ROW_COUNT:-3000}"
+SMOKE_ROW_PER_USER="${SMOKE_ROW_PER_USER:-50}"
 SMOKE_PAYLOAD_COUNT="${SMOKE_PAYLOAD_COUNT:-300}"
 
 BASELINE_USERS="${BASELINE_USERS:-100}"
 BASELINE_SPAWN_RATE="${BASELINE_SPAWN_RATE:-10}"
 BASELINE_RUN_TIME="${BASELINE_RUN_TIME:-10m}"
-BASELINE_PREPARE_ROW_COUNT="${BASELINE_PREPARE_ROW_COUNT:-30000}"
+BASELINE_ROW_PER_USER="${BASELINE_ROW_PER_USER:-100}"
 BASELINE_PAYLOAD_COUNT="${BASELINE_PAYLOAD_COUNT:-1000}"
 
 TARGET_USERS="${TARGET_USERS:-1000}"
 TARGET_SPAWN_RATE="${TARGET_SPAWN_RATE:-100}"
-TARGET_RUN_TIME="${TARGET_RUN_TIME:-30m}"
-TARGET_PREPARE_ROW_COUNT="${TARGET_PREPARE_ROW_COUNT:-100000}"
+TARGET_RUN_TIME="${TARGET_RUN_TIME:-10m}"
+TARGET_ROW_PER_USER="${TARGET_ROW_PER_USER:-200}"
 TARGET_PAYLOAD_COUNT="${TARGET_PAYLOAD_COUNT:-5000}"
 
 
@@ -62,9 +63,9 @@ Usage:
   HOST=http://47.94.9.240:8080 ECS_HOST=47.94.9.240 MYSQL_PASSWORD=... bash perf/run_perf_suite.sh <phase> <test>
 
 Phases:
-  smoke      users=$SMOKE_USERS spawn_rate=$SMOKE_SPAWN_RATE run_time=$SMOKE_RUN_TIME rows=$SMOKE_PREPARE_ROW_COUNT payloads=$SMOKE_PAYLOAD_COUNT
-  baseline   users=$BASELINE_USERS spawn_rate=$BASELINE_SPAWN_RATE run_time=$BASELINE_RUN_TIME rows=$BASELINE_PREPARE_ROW_COUNT payloads=$BASELINE_PAYLOAD_COUNT
-  target     users=$TARGET_USERS spawn_rate=$TARGET_SPAWN_RATE run_time=$TARGET_RUN_TIME rows=$TARGET_PREPARE_ROW_COUNT payloads=$TARGET_PAYLOAD_COUNT
+  smoke      users=$SMOKE_USERS spawn_rate=$SMOKE_SPAWN_RATE run_time=$SMOKE_RUN_TIME row_per_user=$SMOKE_ROW_PER_USER payloads=$SMOKE_PAYLOAD_COUNT
+  baseline   users=$BASELINE_USERS spawn_rate=$BASELINE_SPAWN_RATE run_time=$BASELINE_RUN_TIME row_per_user=$BASELINE_ROW_PER_USER payloads=$BASELINE_PAYLOAD_COUNT
+  target     users=$TARGET_USERS spawn_rate=$TARGET_SPAWN_RATE run_time=$TARGET_RUN_TIME row_per_user=$TARGET_ROW_PER_USER payloads=$TARGET_PAYLOAD_COUNT
 
 Tests:
   post_dish
@@ -88,10 +89,11 @@ Remote MySQL options:
   MYSQL_DATABASE=dish_memo
 
 Data options:
-  SMOKE_PREPARE_ROW_COUNT=3000 SMOKE_PAYLOAD_COUNT=300
-  BASELINE_PREPARE_ROW_COUNT=30000 BASELINE_PAYLOAD_COUNT=1000
-  TARGET_PREPARE_ROW_COUNT=100000 TARGET_PAYLOAD_COUNT=5000
-  PREPARE_ROW_COUNT=<override phase rows>
+  LOCUST_USER_ID_PREFIX=perf_user
+  SMOKE_ROW_PER_USER=50 SMOKE_PAYLOAD_COUNT=300
+  BASELINE_ROW_PER_USER=100 BASELINE_PAYLOAD_COUNT=1000
+  TARGET_ROW_PER_USER=200 TARGET_PAYLOAD_COUNT=5000
+  ROW_PER_USER=<override phase rows per user>
   PAYLOAD_COUNT=<override phase payloads>
   RESULT_DIR=perf/results/<run-id>
 EOF
@@ -100,13 +102,13 @@ EOF
 phase_config() {
   case "$1" in
     smoke)
-      printf '%s %s %s %s %s' "$SMOKE_USERS" "$SMOKE_SPAWN_RATE" "$SMOKE_RUN_TIME" "${PREPARE_ROW_COUNT:-$SMOKE_PREPARE_ROW_COUNT}" "${PAYLOAD_COUNT:-$SMOKE_PAYLOAD_COUNT}"
+      printf '%s %s %s %s %s' "$SMOKE_USERS" "$SMOKE_SPAWN_RATE" "$SMOKE_RUN_TIME" "${ROW_PER_USER:-$SMOKE_ROW_PER_USER}" "${PAYLOAD_COUNT:-$SMOKE_PAYLOAD_COUNT}"
       ;;
     baseline)
-      printf '%s %s %s %s %s' "$BASELINE_USERS" "$BASELINE_SPAWN_RATE" "$BASELINE_RUN_TIME" "${PREPARE_ROW_COUNT:-$BASELINE_PREPARE_ROW_COUNT}" "${PAYLOAD_COUNT:-$BASELINE_PAYLOAD_COUNT}"
+      printf '%s %s %s %s %s' "$BASELINE_USERS" "$BASELINE_SPAWN_RATE" "$BASELINE_RUN_TIME" "${ROW_PER_USER:-$BASELINE_ROW_PER_USER}" "${PAYLOAD_COUNT:-$BASELINE_PAYLOAD_COUNT}"
       ;;
     target)
-      printf '%s %s %s %s %s' "$TARGET_USERS" "$TARGET_SPAWN_RATE" "$TARGET_RUN_TIME" "${PREPARE_ROW_COUNT:-$TARGET_PREPARE_ROW_COUNT}" "${PAYLOAD_COUNT:-$TARGET_PAYLOAD_COUNT}"
+      printf '%s %s %s %s %s' "$TARGET_USERS" "$TARGET_SPAWN_RATE" "$TARGET_RUN_TIME" "${ROW_PER_USER:-$TARGET_ROW_PER_USER}" "${PAYLOAD_COUNT:-$TARGET_PAYLOAD_COUNT}"
       ;;
     *)
       log "Unknown phase: $1"
@@ -194,18 +196,20 @@ remote_copy() {
 }
 
 generate_prepare_files() {
-  local prepare_row_count="$1"
-  local payload_count="$2"
+  local users="$1"
+  local row_per_user="$2"
+  local payload_count="$3"
   local data_dir="$RESULT_DIR/$PHASE/data"
   local targets
   targets="$(selected_tests | paste -sd, -)"
-  log "Generating prepare SQL: phase=$PHASE test=$TEST targets=$targets rows=$prepare_row_count payloads=$payload_count"
+  log "Generating prepare SQL: phase=$PHASE test=$TEST targets=$targets users=$users row_per_user=$row_per_user payloads=$payload_count"
   python3 perf/generate_prepare_sql.py \
     --output-dir "$data_dir" \
     --run-id "$RUN_ID" \
-    --user-id "$USER_ID" \
+    --user-id-prefix "$USER_ID_PREFIX" \
+    --user-count "$users" \
     --targets "$targets" \
-    --row-count "$prepare_row_count" \
+    --row-per-user "$row_per_user" \
     --payload-count "$payload_count" \
     >"$data_dir.generate.log"
 }
@@ -229,6 +233,19 @@ cleanup_remote_data() {
   remote_exec "rm -rf '$ECS_REMOTE_DIR'" || true
 }
 
+cleanup_local_data() {
+  local data_dir="$RESULT_DIR/$PHASE/data"
+  if [ -d "$data_dir" ]; then
+    log "Removing local prepare data under $data_dir"
+    rm -rf "$data_dir"
+  fi
+}
+
+cleanup() {
+  cleanup_remote_data
+  cleanup_local_data
+}
+
 run_locust_file() {
   local run_name="$1"
   local locust_file="$2"
@@ -243,6 +260,7 @@ run_locust_file() {
 
   log "Running $PHASE/$run_name"
   LOCUST_USER_ID="$USER_ID" \
+  LOCUST_USER_ID_FILE="$data_dir/user_ids.txt" \
   LOCUST_API_PREFIX="$API_PREFIX" \
   LOCUST_DISH_PAYLOAD_FILE="$data_dir/dish_payloads.jsonl" \
   LOCUST_DISH_IDS="" \
@@ -298,12 +316,12 @@ render_summary_report() {
 }
 
 run_phase_tests() {
-  local users spawn_rate run_time prepare_row_count payload_count
-  read -r users spawn_rate run_time prepare_row_count payload_count <<<"$(phase_config "$PHASE")"
+  local users spawn_rate run_time row_per_user payload_count
+  read -r users spawn_rate run_time row_per_user payload_count <<<"$(phase_config "$PHASE")"
   mkdir -p "$RESULT_DIR/$PHASE/data"
-  trap cleanup_remote_data EXIT
+  trap cleanup EXIT
 
-  generate_prepare_files "$prepare_row_count" "$payload_count"
+  generate_prepare_files "$users" "$row_per_user" "$payload_count"
   prepare_remote_data
 
   local run_name

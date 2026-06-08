@@ -1,6 +1,6 @@
 from locust import task
 
-from common import API_PREFIX, DEFAULT_USER_ID, DishMemoUser, append_created_dish_id, dish_payload_pool, request_headers
+from common import API_PREFIX, DishMemoUser, append_created_dish_id, dish_payload_pool, request_headers
 
 
 class PostDishUser(DishMemoUser):
@@ -8,8 +8,8 @@ class PostDishUser(DishMemoUser):
     def post_dish(self):
         with self.client.post(
             f"{API_PREFIX}/dishes",
-            json=dish_payload_pool.next(DEFAULT_USER_ID),
-            headers=request_headers(DEFAULT_USER_ID),
+            json=dish_payload_pool.next(self.user_id),
+            headers=request_headers(self.user_id),
             name="POST /dishes",
             catch_response=True,
         ) as response:

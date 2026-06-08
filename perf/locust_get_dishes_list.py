@@ -9,6 +9,6 @@ class GetDishesListUser(DishMemoUser):
         self.client.get(
             f"{API_PREFIX}/dishes",
             params=dish_list_params(),
-            headers=request_headers(),
+            headers=request_headers(self.user_id),
             name="GET /dishes",
         )

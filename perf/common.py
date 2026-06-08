@@ -24,6 +24,30 @@ DEFAULT_DISH_NAMES = (
 )
 
 
+def _load_user_ids_from_env():
+    ids = []
+    user_file = os.getenv("LOCUST_USER_ID_FILE")
+    if user_file:
+        with open(user_file, encoding="utf-8") as handle:
+            ids.extend(line.strip() for line in handle if line.strip())
+
+    raw_ids = os.getenv("LOCUST_USER_IDS", "")
+    ids.extend(item.strip() for item in raw_ids.split(",") if item.strip())
+
+    return ids or [DEFAULT_USER_ID]
+
+
+class UserPool:
+    def __init__(self):
+        self._ids = _load_user_ids_from_env()
+        self._lock = threading.Lock()
+        self._cycle = itertools.cycle(self._ids)
+
+    def next(self):
+        with self._lock:
+            return next(self._cycle)
+
+
 def request_headers(user_id=None):
     return {
         "X-WX-OPENID": user_id or DEFAULT_USER_ID,
@@ -55,23 +79,35 @@ def random_dish_payload(user_id=None):
 def _load_payloads_from_env():
     payload_file = os.getenv("LOCUST_DISH_PAYLOAD_FILE")
     if not payload_file:
-        return []
+        return {}
+    payloads = {}
     with open(payload_file, encoding="utf-8") as handle:
-        return [json.loads(line) for line in handle if line.strip()]
+        for line in handle:
+            if not line.strip():
+                continue
+            payload = json.loads(line)
+            user_id = payload.pop("_user_id", DEFAULT_USER_ID)
+            payloads.setdefault(user_id, []).append(payload)
+    return payloads
 
 
 class DishPayloadPool:
     def __init__(self):
-        self._payloads = _load_payloads_from_env()
+        self._payloads_by_user = _load_payloads_from_env()
         self._lock = threading.Lock()
-        self._index = 0
+        self._indexes = {}
 
     def next(self, user_id=None):
-        if not self._payloads:
-            return random_dish_payload(user_id)
+        owner = user_id or DEFAULT_USER_ID
+        payloads = self._payloads_by_user.get(owner)
+        if not payloads:
+            payloads = self._payloads_by_user.get(DEFAULT_USER_ID)
+        if not payloads:
+            return random_dish_payload(owner)
         with self._lock:
-            payload = dict(self._payloads[self._index % len(self._payloads)])
-            self._index += 1
+            index = self._indexes.get(owner, 0)
+            payload = dict(payloads[index % len(payloads)])
+            self._indexes[owner] = index + 1
             return payload
 
 
@@ -104,41 +140,70 @@ def recommendation_params():
 
 
 def _load_ids_from_env():
-    ids = []
+    ids_by_user = {}
+
+    # when providing LOCUST_DISH_IDS (like [1,2,3,4,...]), not usual way to use it
     raw_ids = os.getenv("LOCUST_DISH_IDS", "")
-    ids.extend(item.strip() for item in raw_ids.split(",") if item.strip())
+    raw_items = [item.strip() for item in raw_ids.split(",") if item.strip()]
+    if raw_items:
+        ids_by_user[DEFAULT_USER_ID] = raw_items
 
     id_file = os.getenv("LOCUST_DISH_ID_FILE")
     if id_file:
         with open(id_file, encoding="utf-8") as handle:
-            ids.extend(line.strip() for line in handle if line.strip())
-    return ids
+            for line in handle:
+                item = line.strip()
+                if not item:
+                    continue
+                if "\t" in item:
+                    user_id, dish_id = item.split("\t", 1)
+                elif "," in item:
+                    user_id, dish_id = item.split(",", 1)
+                else:
+                    user_id, dish_id = DEFAULT_USER_ID, item
+                ids_by_user.setdefault(user_id.strip(), []).append(dish_id.strip())
+    return ids_by_user
 
 
 class DishIdPool:
     def __init__(self):
-        self._ids = _load_ids_from_env()
+        self._ids_by_user = _load_ids_from_env()
         self._lock = threading.Lock()
-        self._cycle = itertools.cycle(self._ids) if self._ids else None
+        self._cycles = {
+            user_id: itertools.cycle(ids)
+            for user_id, ids in self._ids_by_user.items()
+            if ids
+        }
 
-    def require_random(self):
-        if not self._ids:
+    def _ids_for(self, user_id):
+        ids = self._ids_by_user.get(user_id or DEFAULT_USER_ID)
+        if ids:
+            return ids
+        return self._ids_by_user.get(DEFAULT_USER_ID, [])
+
+    def require_random(self, user_id=None):
+        ids = self._ids_for(user_id)
+        if not ids:
             raise RuntimeError("Set LOCUST_DISH_IDS or LOCUST_DISH_ID_FILE with existing dish ids.")
-        return random.choice(self._ids)
+        return random.choice(ids)
 
-    def require_next(self):
-        if self._cycle is None:
+    def require_next(self, user_id=None):
+        owner = user_id or DEFAULT_USER_ID
+        cycle = self._cycles.get(owner) or self._cycles.get(DEFAULT_USER_ID)
+        if cycle is None:
             raise RuntimeError("Set LOCUST_DISH_IDS or LOCUST_DISH_ID_FILE with existing dish ids.")
         with self._lock:
-            return next(self._cycle)
+            return next(cycle)
 
-    def pop_once(self):
+    def pop_once(self, user_id=None):
         with self._lock:
-            if not self._ids:
+            ids = self._ids_for(user_id)
+            if not ids:
                 return None
-            return self._ids.pop()
+            return ids.pop()
 
 
+user_pool = UserPool()
 dish_id_pool = DishIdPool()
 dish_payload_pool = DishPayloadPool()
 
@@ -163,3 +228,7 @@ class DishMemoUser(HttpUser):
         float(os.getenv("LOCUST_WAIT_MIN", "1")),
         float(os.getenv("LOCUST_WAIT_MAX", "10")),
     )
+
+    def __init__(self, environment):
+        super().__init__(environment)
+        self.user_id = user_pool.next()

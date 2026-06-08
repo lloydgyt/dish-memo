@@ -4,7 +4,6 @@ from locust import task
 
 from common import (
     API_PREFIX,
-    DEFAULT_USER_ID,
     DishMemoUser,
     dish_id_pool,
     dish_payload_pool,
@@ -23,7 +22,7 @@ class MixedDishBehaviorUser(DishMemoUser):
         self.client.get(
             f"{API_PREFIX}/dishes",
             params=dish_list_params(),
-            headers=request_headers(DEFAULT_USER_ID),
+            headers=request_headers(self.user_id),
             name="GET /dishes",
         )
 
@@ -32,7 +31,7 @@ class MixedDishBehaviorUser(DishMemoUser):
         self.client.get(
             f"{API_PREFIX}/recommendations/today-meals",
             params=recommendation_params(),
-            headers=request_headers(DEFAULT_USER_ID),
+            headers=request_headers(self.user_id),
             name="GET /recommendations/today-meals",
         )
 
@@ -40,8 +39,8 @@ class MixedDishBehaviorUser(DishMemoUser):
     def create_dish_for_workflow(self):
         with self.client.post(
             f"{API_PREFIX}/dishes",
-            json=dish_payload_pool.next(DEFAULT_USER_ID),
-            headers=request_headers(DEFAULT_USER_ID),
+            json=dish_payload_pool.next(self.user_id),
+            headers=request_headers(self.user_id),
             name="POST /dishes",
             catch_response=True,
         ) as response:
@@ -53,20 +52,20 @@ class MixedDishBehaviorUser(DishMemoUser):
 
     @task(2)
     def update_owned_dish(self):
-        dish_id = dish_id_pool.require_next()
+        dish_id = dish_id_pool.require_next(self.user_id)
         self.client.put(
             f"{API_PREFIX}/dishes/{dish_id}",
-            json=dish_payload_pool.next(DEFAULT_USER_ID),
-            headers=request_headers(DEFAULT_USER_ID),
+            json=dish_payload_pool.next(self.user_id),
+            headers=request_headers(self.user_id),
             name="PUT /dishes/{dish_id}",
         )
 
     @task(2)
     def get_owned_dish_detail(self):
-        dish_id = dish_id_pool.require_random()
+        dish_id = dish_id_pool.require_random(self.user_id)
         self.client.get(
             f"{API_PREFIX}/dishes/{dish_id}",
-            headers=request_headers(DEFAULT_USER_ID),
+            headers=request_headers(self.user_id),
             name="GET /dishes/{dish_id}",
         )
 
@@ -77,7 +76,7 @@ class MixedDishBehaviorUser(DishMemoUser):
         dish_id = self.owned_dish_ids.pop(random.randrange(len(self.owned_dish_ids)))
         self.client.delete(
             f"{API_PREFIX}/dishes/{dish_id}",
-            headers=request_headers(DEFAULT_USER_ID),
+            headers=request_headers(self.user_id),
             name="DELETE /dishes/{dish_id}",
         )
 

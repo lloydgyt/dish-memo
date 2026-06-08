@@ -9,6 +9,6 @@ class GetTodayMealsUser(DishMemoUser):
         self.client.get(
             f"{API_PREFIX}/recommendations/today-meals",
             params=recommendation_params(),
-            headers=request_headers(),
+            headers=request_headers(self.user_id),
             name="GET /recommendations/today-meals",
         )

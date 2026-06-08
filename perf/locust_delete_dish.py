@@ -6,12 +6,12 @@ from common import API_PREFIX, DishMemoUser, dish_id_pool, request_headers
 class DeleteDishUser(DishMemoUser):
     @task
     def delete_dish(self):
-        dish_id = dish_id_pool.pop_once()
+        dish_id = dish_id_pool.pop_once(self.user_id)
         if dish_id is None:
             self.environment.runner.quit()
             return
         self.client.delete(
             f"{API_PREFIX}/dishes/{dish_id}",
-            headers=request_headers(),
+            headers=request_headers(self.user_id),
             name="DELETE /dishes/{dish_id}",
         )
