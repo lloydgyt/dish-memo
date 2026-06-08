@@ -95,7 +95,6 @@ MYSQL_DATABASE=dish_memo
 - `<phase>/data/cleanup.sql`
 - `<phase>/data/dish_ids.txt`
 - `<phase>/data/dish_payloads.jsonl`
-- `<phase>/<test>/console.log`
 - `<phase>/<test>/locust.log`
 - `<phase>/<test>/stats*.csv`
 - `<phase>/<test>/summary.csv`

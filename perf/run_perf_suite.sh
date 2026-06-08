@@ -261,7 +261,6 @@ run_locust_file() {
       --logfile "$run_dir/locust.log" \
       --loglevel INFO \
       --exit-code-on-error "$LOCUST_EXIT_CODE_ON_ERROR" \
-      >"$run_dir/console.log" 2>&1
 
   python3 perf/summarize_locust.py \
     --run-dir "$run_dir" \
