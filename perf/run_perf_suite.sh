@@ -126,7 +126,10 @@ run_locust_file() {
       --csv "$run_dir/stats" \
       --logfile "$run_dir/locust.log" \
       --loglevel INFO \
+      --exit-code-on-error 0  \
       >"$run_dir/console.log" 2>&1
+      # always return 0, enbale ctrl-c to skip test
+      # even if test contains failed requests
 
   python3 perf/summarize_locust.py \
     --run-dir "$run_dir" \
