@@ -1,96 +1,86 @@
 # Locust pressure tests
 
-These scripts target the `/api/v1` dish APIs and use payloads compatible with `docs/table_ddl/perf_schema.sql`.
+Use `perf/run_perf_suite.sh` as the entrypoint for pressure tests. The script owns data preparation, remote SQL import, Locust execution, report rendering, and cleanup.
 
-## Common environment variables
-
-- `LOCUST_USER_ID`: defaults to `perf_user_001`.
-- `LOCUST_API_PREFIX`: defaults to `/api/v1`.
-- `LOCUST_DISH_IDS`: comma-separated existing dish IDs for detail/update/delete single-endpoint tests.
-- `LOCUST_DISH_ID_FILE`: newline-separated existing dish IDs for detail/update/delete single-endpoint tests.
-- `LOCUST_MEAL_TYPE`: optional fixed `breakfast`, `lunch`, or `dinner`.
-- `LOCUST_PAGE_NO`, `LOCUST_PAGE_SIZE`, `LOCUST_KEYWORD`, `LOCUST_DATE_FROM`, `LOCUST_DATE_TO`: optional list query filters.
-- `LOCUST_RECOMMENDATION_SIZE`: defaults to `3`.
-
-## Single-endpoint scripts
+## Usage
 
 ```bash
-locust -f perf/locust_get_dishes_list.py --host http://localhost:8080
-locust -f perf/locust_get_dish_detail.py --host http://localhost:8080
-locust -f perf/locust_post_dish.py --host http://localhost:8080
-locust -f perf/locust_put_dish.py --host http://localhost:8080
-locust -f perf/locust_delete_dish.py --host http://localhost:8080
-locust -f perf/locust_get_today_meals.py --host http://localhost:8080
+HOST=http://47.94.9.240:8080 \
+ECS_HOST=47.94.9.240 \
+MYSQL_USER=root \
+MYSQL_PASSWORD='***' \
+bash perf/run_perf_suite.sh smoke get_dishes_list
 ```
 
-`GET /dishes/{dish_id}`, `PUT /dishes/{dish_id}`, and `DELETE /dishes/{dish_id}` need existing records owned by `LOCUST_USER_ID`. For delete tests, provide enough unique IDs because each ID is consumed once.
+Arguments:
 
-## Mixed behavior script
+- `phase`: `smoke`, `baseline`, or `target`.
+- `test`: one single Locust file or `suite`.
+
+Available tests:
+
+- `post_dish`
+- `get_dishes_list`
+- `get_dish_detail`
+- `get_today_meals`
+- `put_dish`
+- `delete_dish`
+- `mixed`
+- `suite`
+- `reachability`
+
+`suite` runs every Locust file in this order:
+
+1. `post_dish`
+2. `get_dishes_list`
+3. `get_dish_detail`
+4. `get_today_meals`
+5. `put_dish`
+6. `delete_dish`
+7. `mixed`
+
+## Data Preparation
+
+`perf/run_perf_suite.sh` calls `perf/generate_prepare_sql.py` before Locust starts. The generator writes:
+
+- `prepare.sql`: inserts the prepared `dish_record` rows for the selected test.
+- `cleanup.sql`: deletes rows for the current run id.
+- `dish_ids.txt`: newline-separated IDs consumed by GET detail, PUT, DELETE, and mixed tests.
+- `dish_payloads.jsonl`: request bodies consumed by POST and PUT tests.
+
+By default, GET, PUT, DELETE, recommendation, mixed, and suite tests prepare `30000` rows. POST-only tests generate payloads but do not insert dish rows.
 
 ```bash
-locust -f perf/locust_mixed_dish_behaviors.py --host http://localhost:8080
+PREPARE_ROW_COUNT=30000 PAYLOAD_COUNT=1000 bash perf/run_perf_suite.sh baseline suite
 ```
 
-The mixed script creates its own records and then performs list, detail, update, delete, and recommendation requests as one user workflow.
+## Remote MySQL
 
-## Automated staged suite
-
-The recommended flow is:
+The runner imports and cleans data through SSH:
 
 ```bash
-HOST=http://localhost:8080 bash perf/run_perf_suite.sh reachability
-HOST=http://localhost:8080 bash perf/run_perf_suite.sh smoke
-HOST=http://localhost:8080 bash perf/run_perf_suite.sh baseline
+ECS_HOST=47.94.9.240
+ECS_USER=root
+ECS_SSH_PORT=22
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD='***'
+MYSQL_DATABASE=dish_memo
 ```
 
-Start `target` only after reachability, smoke, and baseline results look healthy:
+You can also pass `ECS_SSH_TARGET=user@host` instead of `ECS_USER` and `ECS_HOST`.
 
-```bash
-HOST=http://localhost:8080 bash perf/run_perf_suite.sh target
-```
+## Outputs
 
-The suite uses `uvx locust` for Locust runs. Every Locust stage runs all single-endpoint scripts and the mixed behavior script in this fixed order:
+Outputs are written under `perf/results/<run-id>/` by default:
 
-1. `POST /dishes`
-2. `GET /dishes`
-3. `GET /dishes/{dish_id}`
-4. `GET /recommendations/today-meals`
-5. `PUT /dishes/{dish_id}`
-6. `DELETE /dishes/{dish_id}`
-7. Mixed behavior
-
-Common options:
-
-```bash
-HOST=http://localhost:8080 \
-LOCUST_USER_ID=perf_user_001 \
-RESULT_DIR=perf/results/manual_run \
-bash perf/run_perf_suite.sh smoke
-```
-
-Stage defaults:
-
-```bash
-SMOKE_USERS=1 SMOKE_SPAWN_RATE=1 SMOKE_RUN_TIME=30s
-BASELINE_USERS=5 BASELINE_SPAWN_RATE=1 BASELINE_RUN_TIME=2m
-TARGET_USERS=20 TARGET_SPAWN_RATE=5 TARGET_RUN_TIME=5m
-```
-
-Dataset behavior:
-
-```bash
-DATASET_COUNT=1000 bash perf/run_perf_suite.sh baseline
-```
-
-For each Locust stage, `perf/generate_dataset.py` creates a deterministic JSONL payload dataset. `locust_post_dish.py` reads from that dataset and writes the created IDs to `created_dish_ids.txt`. Detail, PUT, and DELETE single-endpoint tests then use that intermediate ID file. The mixed behavior script manages its own created ID pool, so its PUT and DELETE operations only touch records that already exist in that workflow.
-
-Outputs are written under `perf/results/<timestamp>/` by default:
-
-- `reachability`: no output files; stdout prints `REACHABILITY OK` or `REACHABILITY FAILED: ...`.
-- `<stage>/dish_payloads.jsonl`: deterministic payload dataset used by POST/PUT.
-- `<stage>/created_dish_ids.txt`: IDs created by the POST single-endpoint test and reused by detail/PUT/DELETE.
-- `<stage>/<script>/console.log`: Locust console output.
-- `<stage>/<script>/locust.log`: Locust log file.
-- `<stage>/<script>/stats*.csv`: Locust request statistics, failures, and exception CSV files.
-- `<stage>/summary.csv` and `<stage>/summary.txt`: consolidated request count, failure count, QPS, average latency, and percentile latency.
-- `<stage>/report.md`: Markdown summary report with test setup, key metrics, and user-filled Bottlenecks/Conclusion sections.
+- `<phase>/data/prepare.sql`
+- `<phase>/data/cleanup.sql`
+- `<phase>/data/dish_ids.txt`
+- `<phase>/data/dish_payloads.jsonl`
+- `<phase>/<test>/console.log`
+- `<phase>/<test>/locust.log`
+- `<phase>/<test>/stats*.csv`
+- `<phase>/<test>/summary.csv`
+- `<phase>/summary.md`

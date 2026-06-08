@@ -4,10 +4,17 @@ set -euo pipefail
 HOST="${HOST:-http://localhost:8000}"
 API_PREFIX="${LOCUST_API_PREFIX:-/api/v1}"
 USER_ID="${LOCUST_USER_ID:-perf_user_001}"
-STAGE="${1:-${STAGE:-smoke}}"
-RESULT_DIR="${RESULT_DIR:-perf/results/$(date +%Y%m%d_%H%M%S)}"
-DATASET_COUNT="${DATASET_COUNT:-1000}"
+PHASE="${1:-${PHASE:-smoke}}"
+TEST="${2:-${TEST:-suite}}"
+RUN_ID="${RUN_ID:-$(date +%Y%m%d_%H%M%S)}"
+RESULT_DIR="${RESULT_DIR:-perf/results/$RUN_ID}"
 COMMIT="${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || printf unknown)}"
+
+PREPARE_ROW_COUNT="${PREPARE_ROW_COUNT:-30000}"
+PAYLOAD_COUNT="${PAYLOAD_COUNT:-1000}"
+WAIT_MIN="${LOCUST_WAIT_MIN:-1}"
+WAIT_MAX="${LOCUST_WAIT_MAX:-1}"
+LOCUST_EXIT_CODE_ON_ERROR="${LOCUST_EXIT_CODE_ON_ERROR:-0}"
 
 SMOKE_USERS="${SMOKE_USERS:-10}"
 SMOKE_SPAWN_RATE="${SMOKE_SPAWN_RATE:-1}"
@@ -21,8 +28,20 @@ TARGET_USERS="${TARGET_USERS:-1000}"
 TARGET_SPAWN_RATE="${TARGET_SPAWN_RATE:-100}"
 TARGET_RUN_TIME="${TARGET_RUN_TIME:-30m}"
 
-WAIT_MIN="${LOCUST_WAIT_MIN:-1}"
-WAIT_MAX="${LOCUST_WAIT_MAX:-1}"
+ECS_USER="${ECS_USER:-root}"
+ECS_HOST="${ECS_HOST:-}"
+ECS_SSH_TARGET="${ECS_SSH_TARGET:-}"
+ECS_SSH_PORT="${ECS_SSH_PORT:-22}"
+ECS_REMOTE_DIR="${ECS_REMOTE_DIR:-/tmp/dish_memo_perf/$RUN_ID}"
+
+MYSQL_HOST="${MYSQL_HOST:-127.0.0.1}"
+MYSQL_PORT="${MYSQL_PORT:-3306}"
+MYSQL_USER="${MYSQL_USER:-root}"
+MYSQL_PASSWORD="${MYSQL_PASSWORD:-}"
+MYSQL_DATABASE="${MYSQL_DATABASE:-dish_memo}"
+
+declare -a SUMMARY_FILES=()
+PREPARED_REMOTE=0
 
 log() {
   mkdir -p "$RESULT_DIR"
@@ -32,35 +51,42 @@ log() {
 usage() {
   cat <<EOF
 Usage:
-  HOST=http://localhost:8000 bash perf/run_perf_suite.sh <stage>
+  HOST=http://47.94.9.240:8080 ECS_HOST=47.94.9.240 MYSQL_PASSWORD=... bash perf/run_perf_suite.sh <phase> <test>
 
-Stages:
-  reachability   Call each endpoint once and print only the final reachability result.
-  smoke          Run fixed-order Locust smoke tests.
-  baseline       Run fixed-order Locust baseline tests.
-  target         Run fixed-order Locust target/performance tests.
-  all            Run reachability, smoke, baseline, and target.
+Phases:
+  smoke      users=$SMOKE_USERS spawn_rate=$SMOKE_SPAWN_RATE run_time=$SMOKE_RUN_TIME
+  baseline   users=$BASELINE_USERS spawn_rate=$BASELINE_SPAWN_RATE run_time=$BASELINE_RUN_TIME
+  target     users=$TARGET_USERS spawn_rate=$TARGET_SPAWN_RATE run_time=$TARGET_RUN_TIME
 
-Main options:
-  HOST=http://localhost:8000
-  LOCUST_USER_ID=perf_user_001
-  LOCUST_API_PREFIX=/api/v1
-  RESULT_DIR=perf/results/<timestamp>
-  DATASET_COUNT=1000
+Tests:
+  post_dish
+  get_dishes_list
+  get_dish_detail
+  get_today_meals
+  put_dish
+  delete_dish
+  mixed
+  suite      Run all Locust files in fixed order.
+  reachability
 
-Stage options:
-  SMOKE_USERS=1 SMOKE_SPAWN_RATE=1 SMOKE_RUN_TIME=30s
-  BASELINE_USERS=5 BASELINE_SPAWN_RATE=1 BASELINE_RUN_TIME=2m
-  TARGET_USERS=20 TARGET_SPAWN_RATE=5 TARGET_RUN_TIME=5m
+Remote MySQL options:
+  ECS_HOST=47.94.9.240 or ECS_SSH_TARGET=user@host
+  ECS_USER=root
+  ECS_SSH_PORT=22
+  MYSQL_HOST=127.0.0.1
+  MYSQL_PORT=3306
+  MYSQL_USER=root
+  MYSQL_PASSWORD=...
+  MYSQL_DATABASE=dish_memo
+
+Data options:
+  PREPARE_ROW_COUNT=30000
+  PAYLOAD_COUNT=1000
+  RESULT_DIR=perf/results/<run-id>
 EOF
 }
 
-if [ "$STAGE" = "-h" ] || [ "$STAGE" = "--help" ]; then
-  usage
-  exit 0
-fi
-
-stage_config() {
+phase_config() {
   case "$1" in
     smoke)
       printf '%s %s %s' "$SMOKE_USERS" "$SMOKE_SPAWN_RATE" "$SMOKE_RUN_TIME"
@@ -72,7 +98,8 @@ stage_config() {
       printf '%s %s %s' "$TARGET_USERS" "$TARGET_SPAWN_RATE" "$TARGET_RUN_TIME"
       ;;
     *)
-      log "Unknown Locust stage: $1"
+      log "Unknown phase: $1"
+      usage
       exit 1
       ;;
   esac
@@ -85,35 +112,127 @@ run_reachability() {
     --user-id "$USER_ID"
 }
 
-locust_runs=(
-  "post_dish:perf/locust_post_dish.py"
-  "get_dishes_list:perf/locust_get_dishes_list.py"
-  "get_dish_detail:perf/locust_get_dish_detail.py"
-  "get_today_meals:perf/locust_get_today_meals.py"
-  "put_dish:perf/locust_put_dish.py"
-  "delete_dish:perf/locust_delete_dish.py"
-  "mixed:perf/locust_mixed_dish_behaviors.py"
-)
+locust_file_for() {
+  case "$1" in
+    post_dish) printf '%s' "perf/locust_post_dish.py" ;;
+    get_dishes_list) printf '%s' "perf/locust_get_dishes_list.py" ;;
+    get_dish_detail) printf '%s' "perf/locust_get_dish_detail.py" ;;
+    get_today_meals) printf '%s' "perf/locust_get_today_meals.py" ;;
+    put_dish) printf '%s' "perf/locust_put_dish.py" ;;
+    delete_dish) printf '%s' "perf/locust_delete_dish.py" ;;
+    mixed) printf '%s' "perf/locust_mixed_dish_behaviors.py" ;;
+    *)
+      log "Unknown test: $1"
+      usage
+      exit 1
+      ;;
+  esac
+}
+
+selected_tests() {
+  case "$TEST" in
+    suite|all)
+      printf '%s\n' post_dish get_dishes_list get_dish_detail get_today_meals put_dish delete_dish mixed
+      ;;
+    post_dish|get_dishes_list|get_dish_detail|get_today_meals|put_dish|delete_dish|mixed)
+      printf '%s\n' "$TEST"
+      ;;
+    reachability)
+      printf '%s\n' reachability
+      ;;
+    *)
+      log "Unknown test: $TEST"
+      usage
+      exit 1
+      ;;
+  esac
+}
+
+ssh_target() {
+  if [ -n "$ECS_SSH_TARGET" ]; then
+    printf '%s' "$ECS_SSH_TARGET"
+    return
+  fi
+  if [ -z "$ECS_HOST" ]; then
+    log "ECS_HOST or ECS_SSH_TARGET is required for tests that prepare remote data"
+    usage
+    exit 1
+  fi
+  printf '%s@%s' "$ECS_USER" "$ECS_HOST"
+}
+
+mysql_remote_command() {
+  local sql_file="$1"
+  if [ -n "$MYSQL_PASSWORD" ]; then
+    printf 'mysql -h %q -P %q -u %q %q %q < %q' \
+      "$MYSQL_HOST" "$MYSQL_PORT" "$MYSQL_USER" "-p$MYSQL_PASSWORD" "$MYSQL_DATABASE" "$sql_file"
+    return
+  fi
+  printf 'mysql -h %q -P %q -u %q %q < %q' \
+    "$MYSQL_HOST" "$MYSQL_PORT" "$MYSQL_USER" "$MYSQL_DATABASE" "$sql_file"
+}
+
+remote_exec() {
+  ssh -p "$ECS_SSH_PORT" "$(ssh_target)" "$@"
+}
+
+remote_copy() {
+  scp -P "$ECS_SSH_PORT" "$1" "$(ssh_target):$2"
+}
+
+generate_prepare_files() {
+  local data_dir="$RESULT_DIR/$PHASE/data"
+  local targets
+  targets="$(selected_tests | paste -sd, -)"
+  log "Generating prepare SQL: phase=$PHASE test=$TEST targets=$targets rows=$PREPARE_ROW_COUNT"
+  python3 perf/generate_prepare_sql.py \
+    --output-dir "$data_dir" \
+    --run-id "$RUN_ID" \
+    --user-id "$USER_ID" \
+    --targets "$targets" \
+    --row-count "$PREPARE_ROW_COUNT" \
+    --payload-count "$PAYLOAD_COUNT" \
+    >"$data_dir.generate.log"
+}
+
+prepare_remote_data() {
+  local data_dir="$RESULT_DIR/$PHASE/data"
+  log "Uploading prepare SQL to ECS and importing into MySQL"
+  remote_exec "mkdir -p '$ECS_REMOTE_DIR'"
+  remote_copy "$data_dir/prepare.sql" "$ECS_REMOTE_DIR/prepare.sql"
+  remote_copy "$data_dir/cleanup.sql" "$ECS_REMOTE_DIR/cleanup.sql"
+  PREPARED_REMOTE=1
+  remote_exec "$(mysql_remote_command "$ECS_REMOTE_DIR/prepare.sql")"
+}
+
+cleanup_remote_data() {
+  if [ "$PREPARED_REMOTE" != "1" ]; then
+    return
+  fi
+  log "Cleaning prepared data on ECS"
+  remote_exec "$(mysql_remote_command "$ECS_REMOTE_DIR/cleanup.sql")" || true
+  remote_exec "rm -rf '$ECS_REMOTE_DIR'" || true
+}
 
 run_locust_file() {
-  local stage="$1"
-  local run_name="$2"
-  local locust_file="$3"
-  local users="$4"
-  local spawn_rate="$5"
-  local run_time="$6"
-  local dataset_file="$7"
-  local created_ids_file="$8"
+  local run_name="$1"
+  local locust_file="$2"
+  local users="$3"
+  local spawn_rate="$4"
+  local run_time="$5"
 
-  local run_dir="$RESULT_DIR/$stage/$run_name"
+  local stage_dir="$RESULT_DIR/$PHASE"
+  local data_dir="$stage_dir/data"
+  local run_dir="$stage_dir/$run_name"
   mkdir -p "$run_dir"
 
-  log "Running $stage/$run_name"
+  log "Running $PHASE/$run_name"
   LOCUST_USER_ID="$USER_ID" \
   LOCUST_API_PREFIX="$API_PREFIX" \
-  LOCUST_DISH_PAYLOAD_FILE="$dataset_file" \
-  LOCUST_CREATED_DISH_ID_FILE="$created_ids_file" \
-  LOCUST_DISH_ID_FILE="$created_ids_file" \
+  LOCUST_DISH_PAYLOAD_FILE="$data_dir/dish_payloads.jsonl" \
+  LOCUST_DISH_IDS="" \
+  LOCUST_DISH_ID_FILE="$data_dir/dish_ids.txt" \
+  LOCUST_CREATED_DISH_ID_FILE="$run_dir/created_dish_ids.txt" \
   LOCUST_WAIT_MIN="$WAIT_MIN" \
   LOCUST_WAIT_MAX="$WAIT_MAX" \
     uvx locust \
@@ -126,107 +245,74 @@ run_locust_file() {
       --csv "$run_dir/stats" \
       --logfile "$run_dir/locust.log" \
       --loglevel INFO \
-      --exit-code-on-error 0  \
+      --exit-code-on-error "$LOCUST_EXIT_CODE_ON_ERROR" \
       >"$run_dir/console.log" 2>&1
-      # always return 0, enbale ctrl-c to skip test
-      # even if test contains failed requests
 
   python3 perf/summarize_locust.py \
     --run-dir "$run_dir" \
-    --stage "$stage" \
+    --stage "$PHASE" \
     --run "$run_name" \
     --output "$run_dir/summary.csv" \
     | tee "$run_dir/summarize.log"
+  SUMMARY_FILES+=("$run_dir/summary.csv")
 }
 
-run_locust_stage() {
-  local stage="$1"
-  local users spawn_rate run_time
-  read -r users spawn_rate run_time <<<"$(stage_config "$stage")"
-
-  local stage_dir="$RESULT_DIR/$stage"
-  local dataset_file="$stage_dir/dish_payloads.jsonl"
-  local created_ids_file="$stage_dir/created_dish_ids.txt"
-  mkdir -p "$stage_dir"
-
-  log "Preparing deterministic dataset for $stage"
-  python3 perf/generate_dataset.py \
-    --output "$dataset_file" \
-    --created-ids-output "$created_ids_file" \
-    --count "$DATASET_COUNT" \
-    --user-id "$USER_ID" \
-    >"$stage_dir/dataset.log"
-
-  log "Running $stage: users=$users spawn_rate=$spawn_rate run_time=$run_time"
-  local summary_files=()
-  for entry in "${locust_runs[@]}"; do
-    local run_name="${entry%%:*}"
-    run_locust_file \
-      "$stage" \
-      "$run_name" \
-      "${entry#*:}" \
-      "$users" \
-      "$spawn_rate" \
-      "$run_time" \
-      "$dataset_file" \
-      "$created_ids_file"
-    summary_files+=("$stage_dir/$run_name/summary.csv")
-  done
+render_summary_report() {
+  local users="$1"
+  local spawn_rate="$2"
+  local run_time="$3"
+  if [ "${#SUMMARY_FILES[@]}" -eq 0 ]; then
+    return
+  fi
 
   local summary_args=()
   local summary_file
-  for summary_file in "${summary_files[@]}"; do
+  for summary_file in "${SUMMARY_FILES[@]}"; do
     summary_args+=(--summary "$summary_file")
   done
-  local report_title
-  case "$stage" in
-    smoke)
-      report_title="Smoke Test Summary"
-      ;;
-    baseline)
-      report_title="Baseline Test Summary"
-      ;;
-    target)
-      report_title="Target Test Summary"
-      ;;
-    *)
-      report_title="$stage Test Summary"
-      ;;
-  esac
   python3 perf/render_report.py \
     "${summary_args[@]}" \
-    --output "$stage_dir/summary.md" \
-    --title "$report_title" \
+    --output "$RESULT_DIR/$PHASE/summary.md" \
+    --title "$PHASE $TEST Test Summary" \
     --host "$HOST" \
     --users "$users" \
     --spawn-rate "$spawn_rate" \
     --run-time "$run_time" \
-    --stage "$stage" \
+    --stage "$PHASE" \
     --commit "$COMMIT" \
-    | tee "$stage_dir/summary.log"
+    | tee "$RESULT_DIR/$PHASE/summary.log"
 }
 
-case "$STAGE" in
-  all)
-    run_reachability
-    run_locust_stage smoke
-    run_locust_stage baseline
-    run_locust_stage target
-    ;;
-  reachability)
-    run_reachability
-    ;;
-  smoke|baseline|target)
-    run_locust_stage "$STAGE"
-    ;;
-  *)
-    usage
-    exit 1
-    ;;
-esac
+run_phase_tests() {
+  local users spawn_rate run_time
+  read -r users spawn_rate run_time <<<"$(phase_config "$PHASE")"
+  mkdir -p "$RESULT_DIR/$PHASE/data"
+  trap cleanup_remote_data EXIT
 
-if [ "$STAGE" != "reachability" ]; then
+  generate_prepare_files
+  prepare_remote_data
+
+  local run_name
+  while IFS= read -r run_name; do
+    run_locust_file "$run_name" "$(locust_file_for "$run_name")" "$users" "$spawn_rate" "$run_time"
+  done < <(selected_tests)
+
+  render_summary_report "$users" "$spawn_rate" "$run_time"
   log "Finished. Results are under $RESULT_DIR"
-  # remove temporary file
-  rm -rf "$RESULT_DIR/$STAGE/created_dish_ids.txt"
-fi
+}
+
+main() {
+  if [ "$PHASE" = "-h" ] || [ "$PHASE" = "--help" ]; then
+    usage
+    exit 0
+  fi
+
+  if [ "$PHASE" = "reachability" ] || [ "$TEST" = "reachability" ]; then
+    run_reachability
+    exit 0
+  fi
+
+  run_phase_tests
+}
+
+main "$@"

@@ -6,6 +6,7 @@ from common import (
     API_PREFIX,
     DEFAULT_USER_ID,
     DishMemoUser,
+    dish_id_pool,
     dish_payload_pool,
     dish_list_params,
     recommendation_params,
@@ -52,9 +53,7 @@ class MixedDishBehaviorUser(DishMemoUser):
 
     @task(2)
     def update_owned_dish(self):
-        if not self.owned_dish_ids:
-            return
-        dish_id = random.choice(self.owned_dish_ids)
+        dish_id = dish_id_pool.require_next()
         self.client.put(
             f"{API_PREFIX}/dishes/{dish_id}",
             json=dish_payload_pool.next(DEFAULT_USER_ID),
@@ -64,9 +63,7 @@ class MixedDishBehaviorUser(DishMemoUser):
 
     @task(2)
     def get_owned_dish_detail(self):
-        if not self.owned_dish_ids:
-            return
-        dish_id = random.choice(self.owned_dish_ids)
+        dish_id = dish_id_pool.require_random()
         self.client.get(
             f"{API_PREFIX}/dishes/{dish_id}",
             headers=request_headers(DEFAULT_USER_ID),
