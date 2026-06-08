@@ -148,7 +148,6 @@ public interface DishMapper {
             SELECT *
             FROM dish_record
             WHERE user_id = #{userId} AND meal_type = #{mealType}
-            ORDER BY created_at DESC, id DESC
             LIMIT 100 OFFSET #{offset}
             """)
     List<DishRecord> listRecommendationPageByUserIdAndMealType(
