@@ -48,10 +48,26 @@ bash perf/run_perf_suite.sh smoke get_dishes_list
 - `dish_ids.txt`：按行记录菜品 ID，供 GET 详情、PUT、DELETE 和 mixed 测试消费。
 - `dish_payloads.jsonl`：请求体数据，供 POST 和 PUT 测试消费。
 
-默认情况下，GET、PUT、DELETE、推荐、mixed 和 suite 测试会准备 `30000` 行数据。仅运行 POST 测试时只生成请求 payload，不插入 dish 预置数据。
+默认情况下，数据量由 `phase` 自动决定，平时只需要选择 `smoke`、`baseline` 或 `target`。仅运行 POST 测试时只生成请求 payload，不插入 dish 预置数据。
+
+| phase | 预置 dish 行数 | POST/PUT payload 数 |
+|---|---:|---:|
+| `smoke` | `3000` | `300` |
+| `baseline` | `30000` | `1000` |
+| `target` | `100000` | `5000` |
+
+如果需要临时覆盖某个 phase 的数据量，可以使用对应环境变量：
 
 ```bash
-PREPARE_ROW_COUNT=30000 PAYLOAD_COUNT=1000 bash perf/run_perf_suite.sh baseline suite
+BASELINE_PREPARE_ROW_COUNT=50000 \
+BASELINE_PAYLOAD_COUNT=2000 \
+bash perf/run_perf_suite.sh baseline suite
+```
+
+也可以只覆盖当前这一次运行：
+
+```bash
+PREPARE_ROW_COUNT=50000 PAYLOAD_COUNT=2000 bash perf/run_perf_suite.sh baseline suite
 ```
 
 ## 远程 MySQL
