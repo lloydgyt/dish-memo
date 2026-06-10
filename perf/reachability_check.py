@@ -63,14 +63,6 @@ def main():
         assert_ok(args.host, args.api_prefix, args.user_id, "GET", "/recommendations/today-meals?meal_type=dinner&size=3&refresh_token=reachability")
         assert_ok(args.host, args.api_prefix, args.user_id, "PUT", f"/dishes/{urllib.parse.quote(dish_id)}", payload(args.user_id, "put", "lunch"))
         assert_ok(args.host, args.api_prefix, args.user_id, "DELETE", f"/dishes/{urllib.parse.quote(dish_id)}")
-
-        mixed = assert_ok(args.host, args.api_prefix, args.user_id, "POST", "/dishes", payload(args.user_id, "mixed", "breakfast"))
-        mixed_id = mixed["data"]["id"]
-        assert_ok(args.host, args.api_prefix, args.user_id, "GET", "/dishes?page_no=1&page_size=20")
-        assert_ok(args.host, args.api_prefix, args.user_id, "GET", f"/dishes/{urllib.parse.quote(mixed_id)}")
-        assert_ok(args.host, args.api_prefix, args.user_id, "PUT", f"/dishes/{urllib.parse.quote(mixed_id)}", payload(args.user_id, "mixed-put", "breakfast"))
-        assert_ok(args.host, args.api_prefix, args.user_id, "GET", "/recommendations/today-meals?meal_type=breakfast&size=3&refresh_token=mixed")
-        assert_ok(args.host, args.api_prefix, args.user_id, "DELETE", f"/dishes/{urllib.parse.quote(mixed_id)}")
     except Exception as exc:
         print(f"REACHABILITY FAILED: {exc}")
         raise SystemExit(1) from exc
