@@ -6,32 +6,44 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.BooleanSupplier;
 
 /**
  * Emits sanitized JSON access logs for versioned API requests from the servlet filter boundary.
  */
 @Component
 public class RequestLoggingFilter extends OncePerRequestFilter {
-    private static final Logger LOGGER = LoggerFactory.getLogger(RequestLoggingFilter.class);
+    private static final Logger SUMMARY_LOGGER = LoggerFactory.getLogger("com.example.dish_memo.access.summary");
+    private static final Logger PHASE_LOGGER = LoggerFactory.getLogger("com.example.dish_memo.access.slow");
     private static final String API_PATH_PREFIX = "/api/v1/";
+    private static final int SUCCESS_SAMPLE_RATE_PERCENT = 1;
 
     private final long slowRequestThresholdMs;
+    private final BooleanSupplier successLogSampler;
 
     /**
      * Creates the request logging filter with the configured slow request threshold.
      *
      * @param slowRequestThresholdMs request duration threshold that enables phase detail logging
      */
+    @Autowired
     public RequestLoggingFilter(
             @Value("${dish-memo.logging.slow-request-threshold-ms:500}") long slowRequestThresholdMs
     ) {
+        this(slowRequestThresholdMs, () -> ThreadLocalRandom.current().nextInt(100) < SUCCESS_SAMPLE_RATE_PERCENT);
+    }
+
+    RequestLoggingFilter(long slowRequestThresholdMs, BooleanSupplier successLogSampler) {
         this.slowRequestThresholdMs = slowRequestThresholdMs;
+        this.successLogSampler = successLogSampler;
     }
 
     /**
@@ -83,7 +95,8 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
             long durationMs
     ) {
         long dbDurationMs = RequestLogContext.dbDurationMs();
-        LOGGER.info(StructuredLogUtils.request(
+        boolean slowRequest = durationMs > slowRequestThresholdMs;
+        String summaryLog = StructuredLogUtils.request(
                 requestId,
                 request.getHeader(ApiHeaders.WX_OPENID),
                 request.getParameterMap(),
@@ -91,14 +104,29 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
                 response.getStatus(),
                 durationMs,
                 dbDurationMs
-        ));
-        if (durationMs > slowRequestThresholdMs) {
-            LOGGER.info(StructuredLogUtils.requestPhase(
+        );
+        logSummary(response.getStatus(), slowRequest, summaryLog);
+        if (slowRequest) {
+            PHASE_LOGGER.warn(StructuredLogUtils.requestPhase(
                     requestId,
                     RequestLogContext.controllerDurationMs(),
                     RequestLogContext.serviceDurationMs(),
                     RequestLogContext.mapperLogs()
             ));
+        }
+    }
+
+    private void logSummary(int status, boolean slowRequest, String summaryLog) {
+        if (status >= 500) {
+            SUMMARY_LOGGER.error(summaryLog);
+            return;
+        }
+        if (status >= 400 || slowRequest) {
+            SUMMARY_LOGGER.warn(summaryLog);
+            return;
+        }
+        if (successLogSampler.getAsBoolean()) {
+            SUMMARY_LOGGER.info(summaryLog);
         }
     }
 
