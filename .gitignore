@@ -9,3 +9,5 @@ target/
 .codex*
 
 perf/results/
+
+.env
