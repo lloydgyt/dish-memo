@@ -7,12 +7,16 @@ services:
       - mysql
     ports:
       - "8080:8080"
+    volumes:
+      # must sync with LOG_PATH
+      - ./logs/app:/app/logs
     environment:
       SERVER_PORT: 8080
       DB_ADDRESS: mysql:3306
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_SCHEMA: dish_memo
+      LOG_PATH: /app/logs
 
   mysql:
     image: mysql:latest
@@ -25,10 +29,17 @@ services:
     ports:
       - "3306:3306"
     volumes:
+      # 慢查询日志默认在 /var/lib/mysql/ 下
       - ./mysql/data:/var/lib/mysql
     command:
       [
         "--character-set-server=utf8mb4",
         "--collation-server=utf8mb4_unicode_ci",
-        "--default-time-zone=+08:00"
+        "--default-time-zone=+08:00",
+
+        # 开启慢查询
+        "--slow-query-log=ON",
+        "--slow-query-log-file=/var/log/mysql/slow.log",
+        "--long-query-time=0.5",
+        "--log-queries-not-using-indexes=OFF"
       ]
