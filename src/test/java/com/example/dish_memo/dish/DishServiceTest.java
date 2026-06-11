@@ -11,6 +11,7 @@ import com.example.dish_memo.dish.dto.CreateDishResponse;
 import com.example.dish_memo.dish.mapper.DishMapper;
 import com.example.dish_memo.dish.service.DishService;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -23,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -145,13 +147,15 @@ class DishServiceTest {
         DishMapper mapper = mock(DishMapper.class);
         StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
         when(mapper.findByIdAndUserId("dish_1", "u_1")).thenReturn(record("dish_1", "u_1", "dinner"));
-        when(redisTemplate.keys(any(String.class))).thenReturn(Set.of("dish:list:page:v1:user:20:0"));
+        when(redisTemplate.execute(any(RedisCallback.class))).thenReturn(Set.of("dish:list:page:v1:user:20:0"));
         DishService service = newService(mapper, redisTemplate);
 
         service.delete("u_1", "dish_1");
 
         verify(mapper).deleteByIdAndUserId("dish_1", "u_1");
         verify(redisTemplate).delete(any(String.class));
+        verify(redisTemplate).execute(any(RedisCallback.class));
+        verify(redisTemplate, never()).keys(anyString());
         verify(redisTemplate).delete(Set.of("dish:list:page:v1:user:20:0"));
     }
 

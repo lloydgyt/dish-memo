@@ -17,6 +17,9 @@ import com.example.dish_memo.dish.dto.MealType;
 import com.example.dish_memo.dish.mapper.DishMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.RedisCallback;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.stereotype.Service;
@@ -29,6 +32,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -277,13 +281,28 @@ public class DishService {
     private void evictUnfilteredListCache(String userId) {
         try {
             redisTemplate.delete(countCacheKey(userId));
-            Set<String> listKeys = redisTemplate.keys(LIST_CACHE_KEY_PREFIX + userHash(userId) + ":*");
+            Set<String> listKeys = scanListCacheKeys(userId);
             if (listKeys != null && !listKeys.isEmpty()) {
                 redisTemplate.delete(listKeys);
             }
         } catch (RuntimeException ex) {
             log.warn("Failed to evict dish list cache for user {}", userId, ex);
         }
+    }
+
+    private Set<String> scanListCacheKeys(String userId) {
+        String pattern = LIST_CACHE_KEY_PREFIX + userHash(userId) + ":*";
+        return redisTemplate.execute((RedisCallback<Set<String>>) connection -> {
+            Set<String> keys = new HashSet<>();
+            ScanOptions options = ScanOptions.scanOptions()
+                    .match(pattern)
+                    .count(100)
+                    .build();
+            try (Cursor<byte[]> cursor = connection.scan(options)) {
+                cursor.forEachRemaining(key -> keys.add(new String(key, StandardCharsets.UTF_8)));
+            }
+            return keys;
+        });
     }
 
     private boolean isUnfilteredListQuery(String parsedMealType, LocalDate dateFrom, LocalDate dateTo, String keyword) {

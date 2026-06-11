@@ -50,7 +50,7 @@ services:
         "--log-queries-not-using-indexes=OFF"
       ]
   redis:
-    image: redis:7.2
+    image: redis:latest
     container_name: dish-memo-redis
     restart: unless-stopped
     command:
