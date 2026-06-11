@@ -9,7 +9,7 @@ services:
       - "8080:8080"
     volumes:
       # must sync with LOG_PATH
-      - ./logs/app:/app/logs
+      - ./logs:/app/logs
     environment:
       SERVER_PORT: 8080
       DB_ADDRESS: mysql:3306
@@ -17,6 +17,10 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DB_SCHEMA: dish_memo
       LOG_PATH: /app/logs
+      HIKARI_MAX_POOL_SIZE: 20
+      TOMCAT_MAX_THREADS: 200
+      TOMCAT_MIN_THREADS: 20
+      SLOW_LOG_THRESH_MS: 1000
 
   mysql:
     image: mysql:latest
@@ -29,7 +33,6 @@ services:
     ports:
       - "3306:3306"
     volumes:
-      # 慢查询日志默认在 /var/lib/mysql/ 下
       - ./mysql/data:/var/lib/mysql
     command:
       [
@@ -39,7 +42,7 @@ services:
 
         # 开启慢查询
         "--slow-query-log=ON",
-        "--slow-query-log-file=/var/log/mysql/slow.log",
-        "--long-query-time=0.5",
+        "--slow-query-log-file=/var/lib/mysql/slow.log",
+        "--long-query-time=1",
         "--log-queries-not-using-indexes=OFF"
       ]
