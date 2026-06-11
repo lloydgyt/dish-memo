@@ -37,6 +37,8 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - ./mysql/data:/var/lib/mysql
+    ports:
+      - "3306:3306"
     command:
       [
         "--character-set-server=utf8mb4",
