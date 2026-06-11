@@ -1,5 +1,8 @@
 package com.example.dish_memo.dish.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.dish_memo.common.BusinessException;
 import com.example.dish_memo.common.ErrorCode;
 import com.example.dish_memo.dish.dto.DeleteDishResponse;
@@ -12,12 +15,22 @@ import com.example.dish_memo.dish.dto.DishResponse;
 import com.example.dish_memo.dish.dto.UpdateDishResponse;
 import com.example.dish_memo.dish.dto.MealType;
 import com.example.dish_memo.dish.mapper.DishMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -26,20 +39,30 @@ import java.util.regex.Pattern;
  */
 @Service
 public class DishService {
+    private static final Logger log = LoggerFactory.getLogger(DishService.class);
+    private static final Duration DISH_LIST_CACHE_TTL = Duration.ofMinutes(10);
+    private static final TypeReference<List<DishRecord>> DISH_RECORD_LIST_TYPE = new TypeReference<>() {
+    };
+    private static final String COUNT_CACHE_KEY_PREFIX = "dish:list:count:v1:";
+    private static final String LIST_CACHE_KEY_PREFIX = "dish:list:page:v1:";
     private static final int RECOMMENDATION_PAGE_SIZE = 100;
     private static final Pattern FILE_ID_PATTERN = Pattern.compile(
             "^(cloud://.+|(?:development|production)/dish/[^/\\s]+/[^\\s]+)$"
     );
 
     private final DishMapper dishMapper;
+    private final StringRedisTemplate redisTemplate;
+    private final ObjectMapper objectMapper;
 
     /**
-     * Creates the service with its persistence dependency.
+     * Creates the service with persistence and cache dependencies.
      *
      * @param dishMapper MyBatis dish mapper
      */
-    public DishService(DishMapper dishMapper) {
+    public DishService(DishMapper dishMapper, StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {
         this.dishMapper = dishMapper;
+        this.redisTemplate = redisTemplate;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -58,6 +81,7 @@ public class DishService {
         fillRecord(record, request, mealType, now);
         record.setCreatedAt(now);
         dishMapper.insert(record);
+        evictUnfilteredListCache(userId);
         return CreateDishResponse.from(record);
     }
 
@@ -92,10 +116,14 @@ public class DishService {
         }
 
         int offset = (pageNo - 1) * pageSize;
-        long total = dishMapper.countByFilters(userId, parsedMealType, dateFrom, dateTo, keyword);
-        List<DishListItemResponse> list = dishMapper.listByFilters(
-                        userId, parsedMealType, dateFrom, dateTo, keyword, pageSize, offset
-                ).stream()
+        boolean cacheable = isUnfilteredListQuery(parsedMealType, dateFrom, dateTo, keyword);
+        long total = cacheable
+                ? countByFiltersWithCache(userId)
+                : dishMapper.countByFilters(userId, parsedMealType, dateFrom, dateTo, keyword);
+        List<DishRecord> records = cacheable
+                ? listByFiltersWithCache(userId, pageSize, offset)
+                : dishMapper.listByFilters(userId, parsedMealType, dateFrom, dateTo, keyword, pageSize, offset);
+        List<DishListItemResponse> list = records.stream()
                 .map(DishListItemResponse::from)
                 .toList();
         return new DishPageResponse(list, total, pageNo, pageSize);
@@ -125,6 +153,7 @@ public class DishService {
         MealType mealType = MealType.from(request.mealType());
         fillRecord(record, request, mealType, LocalDateTime.now());
         dishMapper.update(record);
+        evictUnfilteredListCache(userId);
         return UpdateDishResponse.from(record);
     }
 
@@ -138,6 +167,7 @@ public class DishService {
     public DeleteDishResponse delete(String userId, String dishId) {
         requireOwnedRecord(userId, dishId);
         dishMapper.deleteByIdAndUserId(dishId, userId);
+        evictUnfilteredListCache(userId);
         return new DeleteDishResponse(true);
     }
 
@@ -200,6 +230,81 @@ public class DishService {
             throw new BusinessException(ErrorCode.FORBIDDEN, "forbidden to access this dish record");
         }
         return record;
+    }
+
+    private long countByFiltersWithCache(String userId) {
+        String key = countCacheKey(userId);
+        ValueOperations<String, String> values = redisTemplate.opsForValue();
+        try {
+            String cached = values.get(key);
+            if (cached != null) {
+                return Long.parseLong(cached);
+            }
+        } catch (RuntimeException ex) {
+            log.warn("Failed to read dish count cache for user {}", userId, ex);
+        }
+
+        long total = dishMapper.countByFilters(userId, null, null, null, null);
+        try {
+            values.set(key, Long.toString(total), DISH_LIST_CACHE_TTL);
+        } catch (RuntimeException ex) {
+            log.warn("Failed to write dish count cache for user {}", userId, ex);
+        }
+        return total;
+    }
+
+    private List<DishRecord> listByFiltersWithCache(String userId, int pageSize, int offset) {
+        String key = listCacheKey(userId, pageSize, offset);
+        ValueOperations<String, String> values = redisTemplate.opsForValue();
+        try {
+            String cached = values.get(key);
+            if (cached != null) {
+                return objectMapper.readValue(cached, DISH_RECORD_LIST_TYPE);
+            }
+        } catch (JsonProcessingException | RuntimeException ex) {
+            log.warn("Failed to read dish list cache for user {}", userId, ex);
+        }
+
+        List<DishRecord> records = dishMapper.listByFilters(userId, null, null, null, null, pageSize, offset);
+        try {
+            values.set(key, objectMapper.writeValueAsString(records), DISH_LIST_CACHE_TTL);
+        } catch (JsonProcessingException | RuntimeException ex) {
+            log.warn("Failed to write dish list cache for user {}", userId, ex);
+        }
+        return records;
+    }
+
+    private void evictUnfilteredListCache(String userId) {
+        try {
+            redisTemplate.delete(countCacheKey(userId));
+            Set<String> listKeys = redisTemplate.keys(LIST_CACHE_KEY_PREFIX + userHash(userId) + ":*");
+            if (listKeys != null && !listKeys.isEmpty()) {
+                redisTemplate.delete(listKeys);
+            }
+        } catch (RuntimeException ex) {
+            log.warn("Failed to evict dish list cache for user {}", userId, ex);
+        }
+    }
+
+    private boolean isUnfilteredListQuery(String parsedMealType, LocalDate dateFrom, LocalDate dateTo, String keyword) {
+        return parsedMealType == null && dateFrom == null && dateTo == null && keyword == null;
+    }
+
+    private String countCacheKey(String userId) {
+        return COUNT_CACHE_KEY_PREFIX + userHash(userId);
+    }
+
+    private String listCacheKey(String userId, int pageSize, int offset) {
+        return LIST_CACHE_KEY_PREFIX + userHash(userId) + ":" + pageSize + ":" + offset;
+    }
+
+    private String userHash(String userId) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(userId.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 is not available", ex);
+        }
     }
 
     private void validatePage(int pageNo, int pageSize) {

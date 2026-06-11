@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
     depends_on:
       - mysql
+      - redis
     ports:
       - "8080:8080"
     volumes:
@@ -16,10 +17,14 @@ services:
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_SCHEMA: dish_memo
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DATABASE: 0
       LOG_PATH: /app/logs
+
       HIKARI_MAX_POOL_SIZE: 10
-      TOMCAT_MAX_THREADS: 30
-      TOMCAT_MIN_THREADS: 20
+      TOMCAT_MAX_THREADS: 10
+      TOMCAT_MIN_THREADS: 10
       SLOW_LOG_THRESH_MS: 1000
 
   mysql:
@@ -30,8 +35,6 @@ services:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
       MYSQL_DATABASE: dish_memo
       TZ: Asia/Shanghai
-    ports:
-      - "3306:3306"
     volumes:
       - ./mysql/data:/var/lib/mysql
     command:
@@ -46,3 +49,9 @@ services:
         "--long-query-time=1",
         "--log-queries-not-using-indexes=OFF"
       ]
+  redis:
+    image: redis:7.2
+    container_name: dish-memo-redis
+    restart: unless-stopped
+    command:
+      ["redis-server"]
