@@ -96,17 +96,8 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
     ) {
         long dbDurationMs = RequestLogContext.dbDurationMs();
         boolean slowRequest = durationMs > slowRequestThresholdMs;
-        String summaryLog = StructuredLogUtils.request(
-                requestId,
-                request.getHeader(ApiHeaders.WX_OPENID),
-                request.getParameterMap(),
-                request.getMethod() + " " + request.getRequestURI(),
-                response.getStatus(),
-                durationMs,
-                dbDurationMs
-        );
-        logSummary(response.getStatus(), slowRequest, summaryLog);
-        if (slowRequest) {
+        logSummary(request, response, requestId, durationMs, dbDurationMs, slowRequest);
+        if (slowRequest && PHASE_LOGGER.isWarnEnabled()) {
             PHASE_LOGGER.warn(StructuredLogUtils.requestPhase(
                     requestId,
                     RequestLogContext.controllerDurationMs(),
@@ -116,18 +107,48 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
         }
     }
 
-    private void logSummary(int status, boolean slowRequest, String summaryLog) {
+    private void logSummary(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            String requestId,
+            long durationMs,
+            long dbDurationMs,
+            boolean slowRequest
+    ) {
+        int status = response.getStatus();
         if (status >= 500) {
-            SUMMARY_LOGGER.error(summaryLog);
+            if (SUMMARY_LOGGER.isErrorEnabled()) {
+                SUMMARY_LOGGER.error(summaryLog(request, response, requestId, durationMs, dbDurationMs));
+            }
             return;
         }
         if (status >= 400 || slowRequest) {
-            SUMMARY_LOGGER.warn(summaryLog);
+            if (SUMMARY_LOGGER.isWarnEnabled()) {
+                SUMMARY_LOGGER.warn(summaryLog(request, response, requestId, durationMs, dbDurationMs));
+            }
             return;
         }
-        if (successLogSampler.getAsBoolean()) {
-            SUMMARY_LOGGER.info(summaryLog);
+        if (SUMMARY_LOGGER.isInfoEnabled() && successLogSampler.getAsBoolean()) {
+            SUMMARY_LOGGER.info(summaryLog(request, response, requestId, durationMs, dbDurationMs));
         }
+    }
+
+    private String summaryLog(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            String requestId,
+            long durationMs,
+            long dbDurationMs
+    ) {
+        return StructuredLogUtils.request(
+                requestId,
+                request.getHeader(ApiHeaders.WX_OPENID),
+                request.getParameterMap(),
+                request.getMethod() + " " + request.getRequestURI(),
+                response.getStatus(),
+                durationMs,
+                dbDurationMs
+        );
     }
 
     private String requestId(HttpServletRequest request) {

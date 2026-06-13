@@ -124,11 +124,15 @@ public class GlobalExceptionHandler {
     }
 
     private void warn(HttpServletRequest request, String description, Exception ex) {
-        LOGGER.warn(StructuredLogUtils.exception(userId(request), description, ex));
+        if (LOGGER.isWarnEnabled()) {
+            LOGGER.warn(StructuredLogUtils.exception(userId(request), description, ex));
+        }
     }
 
     private void error(HttpServletRequest request, String description, Exception ex) {
-        LOGGER.error(StructuredLogUtils.exception(userId(request), description, ex), ex);
+        if (LOGGER.isErrorEnabled()) {
+            LOGGER.error(StructuredLogUtils.exception(userId(request), description, ex), ex);
+        }
     }
 
     private String userId(HttpServletRequest request) {

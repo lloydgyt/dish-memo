@@ -71,6 +71,15 @@ public final class RequestLogContext {
     }
 
     /**
+     * Adds Mapper duration to the request summary without capturing slow-log details.
+     *
+     * @param durationNanos Mapper execution duration in nanoseconds
+     */
+    public static void recordDbDuration(long durationNanos) {
+        CURRENT.get().dbDurationMs += Math.max(TimeUnit.NANOSECONDS.toMillis(durationNanos), 0);
+    }
+
+    /**
      * Adds Controller method duration to the current request phase metrics.
      *
      * @param durationNanos Controller method duration in nanoseconds

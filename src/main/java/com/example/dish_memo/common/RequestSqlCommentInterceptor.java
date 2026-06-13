@@ -14,6 +14,8 @@ import org.apache.ibatis.reflection.SystemMetaObject;
 import org.apache.ibatis.session.ResultHandler;
 import org.apache.ibatis.session.RowBounds;
 import org.apache.ibatis.executor.statement.StatementHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.sql.Connection;
@@ -38,6 +40,8 @@ import java.util.regex.Pattern;
         })
 })
 public class RequestSqlCommentInterceptor implements Interceptor {
+    private static final Logger SUMMARY_LOGGER = LoggerFactory.getLogger("com.example.dish_memo.access.summary");
+    private static final Logger PHASE_LOGGER = LoggerFactory.getLogger("com.example.dish_memo.access.slow");
     private static final Pattern TRACE_COMMENT = Pattern.compile("/\\*\\s*request_id:\\s*.*?\\s*\\*/", Pattern.DOTALL);
     private static final Pattern TABLE_PATTERN = Pattern.compile(
             "(?is)\\b(?:from|into|update|delete\\s+from)\\s+([`\\w.]+)"
@@ -146,30 +150,45 @@ public class RequestSqlCommentInterceptor implements Interceptor {
     }
 
     private Object recordMapperDuration(Invocation invocation) throws Throwable {
+        boolean summaryEnabled = SUMMARY_LOGGER.isErrorEnabled()
+                || SUMMARY_LOGGER.isWarnEnabled()
+                || SUMMARY_LOGGER.isInfoEnabled();
+        boolean phaseEnabled = PHASE_LOGGER.isWarnEnabled();
+        if (!summaryEnabled && !phaseEnabled) {
+            return invocation.proceed();
+        }
         Object[] args = invocation.getArgs();
         MappedStatement mappedStatement = (MappedStatement) args[0];
-        BoundSql boundSql = boundSql(mappedStatement, args);
         long start = System.nanoTime();
         try {
             Object result = invocation.proceed();
-            RequestLogContext.recordMapper(
-                    mappedStatement.getId(),
-                    dbTable(boundSql.getSql()),
-                    resultSize(result),
-                    fingerprint(boundSql.getSql()),
-                    System.nanoTime() - start
-            );
+            recordMapper(mappedStatement, args, result, System.nanoTime() - start, phaseEnabled);
             return result;
         } catch (Throwable ex) {
-            RequestLogContext.recordMapper(
-                    mappedStatement.getId(),
-                    dbTable(boundSql.getSql()),
-                    0,
-                    fingerprint(boundSql.getSql()),
-                    System.nanoTime() - start
-            );
+            recordMapper(mappedStatement, args, null, System.nanoTime() - start, phaseEnabled);
             throw ex;
         }
+    }
+
+    private void recordMapper(
+            MappedStatement mappedStatement,
+            Object[] args,
+            Object result,
+            long durationNanos,
+            boolean phaseEnabled
+    ) {
+        if (!phaseEnabled) {
+            RequestLogContext.recordDbDuration(durationNanos);
+            return;
+        }
+        BoundSql boundSql = boundSql(mappedStatement, args);
+        RequestLogContext.recordMapper(
+                mappedStatement.getId(),
+                dbTable(boundSql.getSql()),
+                resultSize(result),
+                fingerprint(boundSql.getSql()),
+                durationNanos
+        );
     }
 
     private BoundSql boundSql(MappedStatement mappedStatement, Object[] args) {
