@@ -6,6 +6,7 @@
     <property name="LOG_FILE_PATTERN" value="${LOG_FILE_PATTERN:-%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n}"/>
 
     <property name="LOG_LEVEL_ROOT" value="${LOG_LEVEL_ROOT:-INFO}"/>
+    <property name="LOG_LEVEL_SUMMARY" value="${LOG_LEVEL_SUMMARY:-INFO}"/>
 
     <property name="LOG_MAX_FILE_SIZE" value="${LOG_MAX_FILE_SIZE:-100MB}"/>
     <property name="LOG_MAX_HISTORY" value="${LOG_MAX_HISTORY:-30}"/>
@@ -63,7 +64,7 @@
         </rollingPolicy>
     </appender>
 
-    <logger name="com.example.dish_memo.access.summary" level="INFO" additivity="false">
+    <logger name="com.example.dish_memo.access.summary" level="${LOG_LEVEL_SUMMARY}" additivity="false">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="NORMAL_FILE"/>
     </logger>
