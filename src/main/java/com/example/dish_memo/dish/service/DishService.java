@@ -3,6 +3,8 @@ package com.example.dish_memo.dish.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.example.dish_memo.common.BusinessException;
 import com.example.dish_memo.common.ErrorCode;
 import com.example.dish_memo.dish.dto.DeleteDishResponse;
@@ -57,6 +59,7 @@ public class DishService {
     private final DishMapper dishMapper;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final Cache<String, String> localListCache;
 
     /**
      * Creates the service with persistence and cache dependencies.
@@ -67,6 +70,10 @@ public class DishService {
         this.dishMapper = dishMapper;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
+        this.localListCache = Caffeine.newBuilder()
+                .expireAfterWrite(DISH_LIST_CACHE_TTL)
+                .maximumSize(10_000)
+                .build();
     }
 
     /**
@@ -238,17 +245,30 @@ public class DishService {
 
     private long countByFiltersWithCache(String userId) {
         String key = countCacheKey(userId);
+        String localCached = localListCache.getIfPresent(key);
+        if (localCached != null) {
+            try {
+                return Long.parseLong(localCached);
+            } catch (RuntimeException ex) {
+                localListCache.invalidate(key);
+                log.warn("Failed to read local dish count cache for user {}", userId, ex);
+            }
+        }
+
         ValueOperations<String, String> values = redisTemplate.opsForValue();
         try {
             String cached = values.get(key);
             if (cached != null) {
-                return Long.parseLong(cached);
+                long total = Long.parseLong(cached);
+                localListCache.put(key, cached);
+                return total;
             }
         } catch (RuntimeException ex) {
             log.warn("Failed to read dish count cache for user {}", userId, ex);
         }
 
         long total = dishMapper.countByFilters(userId, null, null, null, null);
+        localListCache.put(key, Long.toString(total));
         try {
             values.set(key, Long.toString(total), DISH_LIST_CACHE_TTL);
         } catch (RuntimeException ex) {
@@ -259,11 +279,23 @@ public class DishService {
 
     private List<DishRecord> listByFiltersWithCache(String userId, int pageSize, int offset) {
         String key = listCacheKey(userId, pageSize, offset);
+        String localCached = localListCache.getIfPresent(key);
+        if (localCached != null) {
+            try {
+                return objectMapper.readValue(localCached, DISH_RECORD_LIST_TYPE);
+            } catch (JsonProcessingException | RuntimeException ex) {
+                localListCache.invalidate(key);
+                log.warn("Failed to read local dish list cache for user {}", userId, ex);
+            }
+        }
+
         ValueOperations<String, String> values = redisTemplate.opsForValue();
         try {
             String cached = values.get(key);
             if (cached != null) {
-                return objectMapper.readValue(cached, DISH_RECORD_LIST_TYPE);
+                List<DishRecord> records = objectMapper.readValue(cached, DISH_RECORD_LIST_TYPE);
+                localListCache.put(key, cached);
+                return records;
             }
         } catch (JsonProcessingException | RuntimeException ex) {
             log.warn("Failed to read dish list cache for user {}", userId, ex);
@@ -271,7 +303,9 @@ public class DishService {
 
         List<DishRecord> records = dishMapper.listByFilters(userId, null, null, null, null, pageSize, offset);
         try {
-            values.set(key, objectMapper.writeValueAsString(records), DISH_LIST_CACHE_TTL);
+            String serializedRecords = objectMapper.writeValueAsString(records);
+            localListCache.put(key, serializedRecords);
+            values.set(key, serializedRecords, DISH_LIST_CACHE_TTL);
         } catch (JsonProcessingException | RuntimeException ex) {
             log.warn("Failed to write dish list cache for user {}", userId, ex);
         }
@@ -279,6 +313,7 @@ public class DishService {
     }
 
     private void evictUnfilteredListCache(String userId) {
+        evictLocalUnfilteredListCache(userId);
         try {
             redisTemplate.delete(countCacheKey(userId));
             Set<String> listKeys = scanListCacheKeys(userId);
@@ -288,6 +323,12 @@ public class DishService {
         } catch (RuntimeException ex) {
             log.warn("Failed to evict dish list cache for user {}", userId, ex);
         }
+    }
+
+    private void evictLocalUnfilteredListCache(String userId) {
+        String userListKeyPrefix = LIST_CACHE_KEY_PREFIX + userHash(userId) + ":";
+        localListCache.invalidate(countCacheKey(userId));
+        localListCache.asMap().keySet().removeIf(key -> key.startsWith(userListKeyPrefix));
     }
 
     private Set<String> scanListCacheKeys(String userId) {

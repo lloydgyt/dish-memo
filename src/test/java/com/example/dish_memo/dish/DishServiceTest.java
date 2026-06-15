@@ -28,6 +28,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -140,6 +141,63 @@ class DishServiceTest {
         assertThat(response.list().get(0).id()).isEqualTo("dish_1");
         verify(mapper, never()).countByFilters(any(), any(), any(), any(), any());
         verify(mapper, never()).listByFilters(any(), any(), any(), any(), any(), anyInt(), anyInt());
+    }
+
+    @Test
+    void listUsesLocalCacheBeforeRedisForUnfilteredCountAndPage() {
+        DishMapper mapper = mock(DishMapper.class);
+        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        ValueOperations<String, String> values = mock(ValueOperations.class);
+        when(redisTemplate.opsForValue()).thenReturn(values);
+        when(values.get(any(String.class)))
+                .thenReturn("1")
+                .thenReturn("""
+                        [{
+                          "id":"dish_1",
+                          "userId":"u_1",
+                          "name":"菜",
+                          "fileId":"production/dish/u_1/dish.jpg",
+                          "date":"2026-04-18",
+                          "mealType":"dinner",
+                          "createdAt":"2026-04-18T10:00:00",
+                          "updatedAt":"2026-04-18T10:00:00"
+                        }]
+                        """);
+        DishService service = newService(mapper, redisTemplate);
+
+        service.list("u_1", 1, 20, null, null, null, null);
+        DishPageResponse response = service.list("u_1", 1, 20, null, null, null, null);
+
+        assertThat(response.total()).isEqualTo(1);
+        assertThat(response.list()).hasSize(1);
+        verify(values, times(2)).get(any(String.class));
+        verify(mapper, never()).countByFilters(any(), any(), any(), any(), any());
+        verify(mapper, never()).listByFilters(any(), any(), any(), any(), any(), anyInt(), anyInt());
+    }
+
+    @Test
+    void createEvictsLocalUnfilteredListCache() {
+        DishMapper mapper = mock(DishMapper.class);
+        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        ValueOperations<String, String> values = mock(ValueOperations.class);
+        DishRecord record = record("dish_1", "u_1", "dinner");
+        when(redisTemplate.opsForValue()).thenReturn(values);
+        when(mapper.countByFilters("u_1", null, null, null, null)).thenReturn(1L);
+        when(mapper.listByFilters("u_1", null, null, null, null, 20, 0)).thenReturn(List.of(record));
+        DishService service = newService(mapper, redisTemplate);
+
+        service.list("u_1", 1, 20, null, null, null, null);
+        service.create("u_1", new DishRequest(
+                "番茄炒蛋",
+                "production/dish/u_1/new-dish.jpg",
+                "少糖",
+                LocalDate.parse("2026-04-18"),
+                "dinner"
+        ));
+        service.list("u_1", 1, 20, null, null, null, null);
+
+        verify(mapper, times(2)).countByFilters("u_1", null, null, null, null);
+        verify(mapper, times(2)).listByFilters("u_1", null, null, null, null, 20, 0);
     }
 
     @Test
