@@ -25,6 +25,7 @@ bash perf/run_perf_suite.sh smoke get_dishes_list
 - `get_today_meals`
 - `put_dish`
 - `delete_dish`
+- `testing`
 - `mixed`
 - `suite`
 - `reachability`
@@ -41,7 +42,7 @@ bash perf/run_perf_suite.sh smoke get_dishes_list
 
 ## 数据准备
 
-`perf/run_perf_suite.sh` 会在 Locust 启动前调用 `perf/generate_prepare_sql.py`。生成脚本会写出：
+`perf/run_perf_suite.sh` 会在 Locust 启动前调用 `perf/generate_perf_data.py`。生成脚本会写出：
 
 - `prepare.sql`：插入当前测试所需的 `dish_record` 预置数据。
 - `cleanup.sql`：删除当前 run id 对应的数据。
@@ -50,6 +51,8 @@ bash perf/run_perf_suite.sh smoke get_dishes_list
 - `dish_payloads.jsonl`：请求体数据，供 POST 和 PUT 测试按用户消费。
 
 默认情况下，数据量由 `phase` 自动决定，平时只需要选择 `smoke`、`baseline` 或 `target`。仅运行 POST 测试时只生成请求 payload，不插入 dish 预置数据。
+
+`testing` 用于压测 `/api/v1/testing` 空接口基准，不导入远程 SQL 数据，只生成 Locust 需要的本地用户池和空数据文件。
 
 | phase | 用户数 | 每用户预置 dish 行数 | 总预置 dish 行数 | POST/PUT payload 数 |
 |---|---:|---:|---:|---:|

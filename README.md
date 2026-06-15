@@ -38,6 +38,7 @@ X-WX-OPENID: <current-user-openid>
 | `POST` | `/dishes/name-suggestions` | 基于 `image_url` 与 `prompt` 生成菜名建议。 |
 | `POST` | `/dishes` | 新增菜品记录。 |
 | `GET` | `/dishes` | 分页查询菜品记录。 |
+| `GET` | `/testing` | 与菜品列表同形状的无数据库访问基准接口。 |
 | `GET` | `/dishes/{dish_id}` | 查询菜品详情。 |
 | `PUT` | `/dishes/{dish_id}` | 编辑菜品记录。 |
 | `DELETE` | `/dishes/{dish_id}` | 删除菜品记录。 |

@@ -74,6 +74,7 @@ Tests:
   get_today_meals
   put_dish
   delete_dish
+  testing
   mixed
   suite      Run all Locust files in fixed order.
   reachability
@@ -133,6 +134,7 @@ locust_file_for() {
     get_today_meals) printf '%s' "perf/locust_get_today_meals.py" ;;
     put_dish) printf '%s' "perf/locust_put_dish.py" ;;
     delete_dish) printf '%s' "perf/locust_delete_dish.py" ;;
+    testing) printf '%s' "perf/locust_testing.py" ;;
     mixed) printf '%s' "perf/locust_mixed_dish_behaviors.py" ;;
     *)
       log "Unknown test: $1"
@@ -147,7 +149,7 @@ selected_tests() {
     suite|all)
       printf '%s\n' post_dish get_dishes_list get_dish_detail get_today_meals put_dish delete_dish mixed
       ;;
-    post_dish|get_dishes_list|get_dish_detail|get_today_meals|put_dish|delete_dish|mixed)
+    post_dish|get_dishes_list|get_dish_detail|get_today_meals|put_dish|delete_dish|testing|mixed)
       printf '%s\n' "$TEST"
       ;;
     reachability)
@@ -203,7 +205,7 @@ generate_prepare_files() {
   local targets
   targets="$(selected_tests | paste -sd, -)"
   log "Generating prepare SQL: phase=$PHASE test=$TEST targets=$targets users=$users row_per_user=$row_per_user payloads=$payload_count"
-  python3 perf/generate_prepare_sql.py \
+  python3 perf/generate_perf_data.py \
     --output-dir "$data_dir" \
     --run-id "$RUN_ID" \
     --user-id-prefix "$USER_ID_PREFIX" \
@@ -212,6 +214,37 @@ generate_prepare_files() {
     --row-per-user "$row_per_user" \
     --payload-count "$payload_count" \
     >"$data_dir.generate.log"
+}
+
+requires_prepare_data() {
+  local run_name
+  while IFS= read -r run_name; do
+    if [ "$run_name" != "testing" ]; then
+      return 0
+    fi
+  done < <(selected_tests)
+  return 1
+}
+
+generate_testing_user_file() {
+  local users="$1"
+  local data_dir="$RESULT_DIR/$PHASE/data"
+  mkdir -p "$data_dir"
+  log "Generating local user IDs for testing endpoint: users=$users"
+  python3 - "$data_dir" "$USER_ID_PREFIX" "$users" <<'PY'
+import sys
+from pathlib import Path
+
+data_dir, prefix, count = Path(sys.argv[1]), sys.argv[2], int(sys.argv[3])
+with (data_dir / "user_ids.txt").open("w", encoding="utf-8") as handle:
+    if count <= 1:
+        handle.write(prefix + "\n")
+    else:
+        for index in range(1, count + 1):
+            handle.write(f"{prefix}_{index:06d}\n")
+(data_dir / "dish_ids.txt").write_text("", encoding="utf-8")
+(data_dir / "dish_payloads.jsonl").write_text("", encoding="utf-8")
+PY
 }
 
 prepare_remote_data() {
@@ -321,8 +354,12 @@ run_phase_tests() {
   mkdir -p "$RESULT_DIR/$PHASE/data"
   trap cleanup EXIT
 
-  generate_prepare_files "$users" "$row_per_user" "$payload_count"
-  prepare_remote_data
+  if requires_prepare_data; then
+    generate_prepare_files "$users" "$row_per_user" "$payload_count"
+    prepare_remote_data
+  else
+    generate_testing_user_file "$users"
+  fi
 
   local run_name
   while IFS= read -r run_name; do
